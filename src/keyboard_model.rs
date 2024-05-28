@@ -59,6 +59,7 @@ Mapping plan:
 
 */
 
+#[derive(Debug)]
 pub enum MIDIEvent {
     Key(Key),
     AbsPad(AbsPad),
@@ -66,22 +67,26 @@ pub enum MIDIEvent {
     KnobButton(KnobButton)
 }
 
+#[derive(Debug)]
 pub struct Key {
     pub pressed: bool,
     pub midi_note: u8,
     pub force: u8
 }
 
+#[derive(Debug)]
 pub struct AbsPad {
     pub id: u8,
     pub pressed: bool
 }
 
+#[derive(Debug)]
 pub struct AbsKnob {
     pub id: u8,
     pub value: u8
 }
 
+#[derive(Debug)]
 pub struct KnobButton {
     pub id: u8,
     pub pressed: bool

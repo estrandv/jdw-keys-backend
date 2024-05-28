@@ -10,6 +10,10 @@ enum IntMatch {
     Any
 }
 
+/*
+    Allows for easy matching of u8 arrays by specifying
+        a fixed-size array of dynamic matching conditions.
+ */
 fn matches(event: &[u8], structure: &[IntMatch]) -> bool {
 
     if event.len() != structure.len() {
@@ -57,9 +61,9 @@ pub fn map(event: &[u8]) -> Option<MIDIEvent> {
         IntMatch::Any
     ]) {
         result = Some(MIDIEvent::Key(Key {
-            pressed: true,
-            midi_note: 0u8,
-            force: 0u8
+            pressed: event[0] == 144u8,
+            midi_note: event[1],
+            force: event[2]
         }));
     }
     else if matches(event, &[
