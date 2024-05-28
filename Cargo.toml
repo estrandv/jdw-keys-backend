@@ -1,0 +1,7 @@
+[package]
+name = "jdw-keys-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+midir = "0.10.0"
