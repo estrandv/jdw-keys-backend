@@ -5,6 +5,7 @@ use std::error::Error;
 use std::io::{stdin, stdout, Write};
 
 use midir::{Ignore, MidiInput};
+use crate::keyboard_model::MIDIEvent;
 
 fn main() {
     match run() {
@@ -56,6 +57,30 @@ fn run() -> Result<(), Box<dyn Error>> {
         in_port,
         "midir-read-input",
         move |stamp, message, _| {
+
+            let decode = midi_mapping::map(message);
+
+            match decode {
+                None => {}
+                Some(event) => {
+                    match event {
+                        MIDIEvent::Key(key) => {
+                            println!("KEY!");
+                        }
+                        MIDIEvent::AbsPad(pad) => {
+                            println!("PAD!");
+                        }
+                        MIDIEvent::AbsKnob(knob) => {
+                            println!("KNOB!");
+                        }
+                        MIDIEvent::KnobButton(button) => {
+                            println!("KNOB PRESS!");
+                        }
+                    }
+                }
+            }
+
+
             println!("{}: {:?} (len = {})", stamp, message, message.len());
         },
         (),
