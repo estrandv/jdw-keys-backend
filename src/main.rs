@@ -1,5 +1,7 @@
 mod keyboard_model;
 mod midi_mapping;
+mod event_history;
+mod event_model;
 
 use std::error::Error;
 use std::io::{stdin, stdout, Write};
@@ -19,6 +21,20 @@ fn main() {
     - Should be the keys-and-history backend for both
     - A separate repo should handle keypress reading for Arturia, but this
         right here is the lab right now
+
+        ROAD AHEAD
+        - Any input source can have a keyset, really
+            - <port_name, mapping_function> and then just iterate
+            - So we should build it a bit like this just to keep it clean
+        - Begin reimplementation of keyboard structs
+            - I think history will have to use its own structs
+                - This because it should be fit for purpose; "knob up" isn't
+                    really relevant to other front ends.
+                - "note_on, note_off, control_change, button_press" etc.
+                    -> Better!
+                    -> This can then have different interpretations depending on mode,
+                        so the original data is important (key index, etc)
+
  */
 
 fn run() -> Result<(), Box<dyn Error>> {
