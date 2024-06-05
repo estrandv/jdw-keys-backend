@@ -1,3 +1,4 @@
+use std::fmt::format;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -23,8 +24,10 @@ pub fn stringify_history(
         .unwrap_or(BigDecimal::zero());
 
     let desired_total = util::round_up_to_nearest(
-        total_beats, BigDecimal::from_str("4.0").unwrap(),
+        total_beats.clone(), BigDecimal::from_str("4.0").unwrap(),
     );
+
+    let difference = desired_total.clone() - total_beats;
 
     let arg_string = util::shuttlefiy_args(args);
 
@@ -42,8 +45,10 @@ pub fn stringify_history(
         })
         .collect::<Vec<String>>().join(" ");
 
+    // Add a silence at the end until we reach the next 4-beat
+    let diff_note = format!("_:{:.4}", difference);
 
-    format!("({}):{}", notes, arg_string)
+    format!("({} {}):{},len{}", notes, diff_note, arg_string, desired_total)
 
 }
 
