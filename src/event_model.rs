@@ -31,6 +31,7 @@ use std::time::Instant;
 pub enum Event {
     NoteOn(NoteOn),
     NoteOff(NoteOff),
+    Silence(Silence),
 }
 
 #[derive(PartialEq)]
@@ -42,5 +43,10 @@ pub struct NoteOn {
 #[derive(PartialEq)]
 pub struct NoteOff {
     pub id: String,
+    pub time: Instant,
+}
+
+#[derive(PartialEq)]
+pub struct Silence {
     pub time: Instant,
 }

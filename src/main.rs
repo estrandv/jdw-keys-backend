@@ -2,6 +2,7 @@ mod keyboard_model;
 mod midi_mapping;
 mod event_history;
 mod event_model;
+mod util;
 
 use std::error::Error;
 use std::io::{stdin, stdout, Write};

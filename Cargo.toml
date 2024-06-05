@@ -4,4 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bigdecimal = "0.4.3"
 midir = "0.10.0"
