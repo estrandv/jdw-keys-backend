@@ -1,10 +1,51 @@
+use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bigdecimal::{BigDecimal, Zero};
+use rosc::OscType;
 
 use crate::event_model::{Event, NoteOff, NoteOn};
 use crate::util;
 use crate::util::duration_to_beats;
+
+pub fn stringify_history(
+    history: Arc<Mutex<EventHistory>>,
+    bpm: i64,
+    quantization: BigDecimal,
+    args: Vec<OscType>,
+) -> String {
+    let sequence = history.lock().unwrap().as_sequence(bpm, quantization.clone());
+
+    let total_beats = sequence.iter()
+        .map(|event| event.reserved_beats.clone())
+        .reduce(|a, b| a + b)
+        .unwrap_or(BigDecimal::zero());
+
+    let desired_total = util::round_up_to_nearest(
+        total_beats, BigDecimal::from_str("4.0").unwrap(),
+    );
+
+    let arg_string = util::shuttlefiy_args(args);
+
+    let notes = sequence.iter()
+        .map(|seq| {
+
+            let mut base = format!("{}:{}", seq.representation, seq.reserved_beats);
+
+            if let Some(sus) = &seq.sustain_beats {
+                base += format!(",sus{:.4}", sus).as_str();
+            }
+
+            base
+
+        })
+        .collect::<Vec<String>>().join(" ");
+
+
+    format!("({}):{}", notes, arg_string)
+
+}
 
 pub struct SequentialEvent {
     representation: String,

@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 bigdecimal = "0.4.3"
 midir = "0.10.0"
+rosc = "0.10.1"
