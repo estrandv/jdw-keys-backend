@@ -3,6 +3,7 @@ mod midi_mapping;
 mod event_history;
 mod event_model;
 mod util;
+mod midi_translation;
 
 use std::error::Error;
 use std::io::{stdin, stdout, Write};
@@ -18,23 +19,19 @@ fn main() {
 }
 
 /*
-    TODO: This is a bit of a second "input lab"
-    - Should be the keys-and-history backend for both
-    - A separate repo should handle keypress reading for Arturia, but this
-        right here is the lab right now
 
-        ROAD AHEAD
-        - Any input source can have a keyset, really
-            - <port_name, mapping_function> and then just iterate
-            - So we should build it a bit like this just to keep it clean
-        - Begin reimplementation of keyboard structs
-            - I think history will have to use its own structs
-                - This because it should be fit for purpose; "knob up" isn't
-                    really relevant to other front ends.
-                - "note_on, note_off, control_change, button_press" etc.
-                    -> Better!
-                    -> This can then have different interpretations depending on mode,
-                        so the original data is important (key index, etc)
+
+    TODO: STATUS
+    - We have a full history struct, with an included stringify
+
+    x* Make a key-to-octaved-letter translation function, for history ids and
+        message sends
+    * Implement message sending logic for notes and samples
+    * Implement history writing
+    * Implement osc settings reading from old application
+    * Create a daemon that reacts to changes in history by performing stringify
+        and writing it to clipboard (later osc)
+    * ...
 
  */
 
@@ -69,7 +66,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 
                     match event {
                         MIDIEvent::Key(key) => {
-                            // ...
+                            println!("KEY!")
                         }
                         MIDIEvent::AbsPad(pad) => {
                             println!("PAD!");
