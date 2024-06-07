@@ -120,7 +120,19 @@ name = "jdw-keys-backend"
 version = "0.1.0"
 dependencies = [
  "bigdecimal",
+ "jdw-osc-lib",
  "midir",
+ "psg",
+ "rosc",
+]
+
+[[package]]
+name = "jdw-osc-lib"
+version = "0.1.1"
+source = "git+https://github.com/estrandv/jdw-osc-lib.git?branch=master#54e5d466b8e9005dd3a2877b20bbedf6c575b2a0"
+dependencies = [
+ "bigdecimal",
+ "log",
  "rosc",
 ]
 
@@ -271,6 +283,12 @@ checksum = "22244ce15aa966053a896d1accb3a6e68469b97c7f33f284b99f0d576879fc23"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "psg"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7c0b48b89555e979817c75779d91d7691f508d67de1d5777b52e40f9abff228"
 
 [[package]]
 name = "quote"

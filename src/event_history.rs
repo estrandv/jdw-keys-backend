@@ -1,3 +1,4 @@
+use std::ops::Index;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -67,7 +68,18 @@ impl EventHistory {
     }
 
     pub fn add(&mut self, event: Event) {
+
+        // Assume replacement of starting silence
+        if matches!(event, Event::Silence(_)) && self.is_silent() {
+            self.events.clear();
+        }
+
         self.events.push(event);
+    }
+
+    fn is_silent(&self) -> bool {
+        self.events.is_empty() || self.events.iter()
+            .all(|event| matches!(event, Event::Silence(_)))
     }
 
     pub fn clear(&mut self) {
