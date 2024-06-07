@@ -38,10 +38,10 @@ pub fn stringify_history(
     let notes = sequence.iter()
         .map(|seq| {
 
-            let mut base = format!("{}:{}", seq.representation, seq.reserved_beats);
+            let mut base = format!("{}:{:.4}", seq.representation, seq.reserved_beats.normalized());
 
             if let Some(sus) = &seq.sustain_beats {
-                base += format!(",sus{:.4}", sus).as_str();
+                base += format!(",sus{:.4}", sus.normalized()).as_str();
             }
 
             base
@@ -50,7 +50,7 @@ pub fn stringify_history(
         .collect::<Vec<String>>().join(" ");
 
     // Add a silence at the end until we reach the next 4-beat
-    let diff_note = format!("_:{:.4}", difference);
+    let diff_note = format!("_:{:.4}", difference.normalized());
 
     format!("({} {}):{},len{}", notes, diff_note, arg_string, desired_total)
 

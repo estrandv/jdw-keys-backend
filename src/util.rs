@@ -62,6 +62,6 @@ pub fn shuttlefiy_args(args: Vec<OscType>) -> String {
 
             format!("{}{}", entry.0, val)
         })
-        .collect::<Vec<String>>().join(", ")
+        .collect::<Vec<String>>().join(",")
 }
 
