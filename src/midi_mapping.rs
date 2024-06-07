@@ -1,5 +1,5 @@
 use std::ops::Range;
-use crate::keyboard_model::{AbsKnob, AbsPad, Key, KnobButton, MIDIEvent};
+use crate::keyboard_model::{AbsKnob, AbsPad, Key, KnobButton, MIDIEvent, ShiftButton};
 
 
 #[derive(Clone)]
@@ -133,6 +133,26 @@ pub fn map(event: &[u8]) -> Option<MIDIEvent> {
         IntMatch::Any
     ]) {
         // Right slider
+    } else if matches(event, &[
+
+        // [240, 0, 32, 107, 127, 66, 2, 0, 0, 46, 127, 247]
+        IntMatch::Abs(240u8),
+        IntMatch::Abs(0u8),
+        IntMatch::Abs(32u8),
+        IntMatch::Abs(107u8),
+        IntMatch::Abs(127u8),
+        IntMatch::Abs(66u8),
+        IntMatch::Abs(2u8),
+        IntMatch::Abs(0u8),
+        IntMatch::Abs(0u8),
+        IntMatch::Abs(46u8),
+        IntMatch::Array(&[127u8, 0u8]),
+        IntMatch::Abs(247u8),
+    ]) {
+        // SHIFT button
+        result = Some(MIDIEvent::ShiftButton(ShiftButton {
+            pressed: event[10] == 127u8,
+        }));
     }
 
     result

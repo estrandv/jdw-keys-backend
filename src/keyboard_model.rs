@@ -64,7 +64,8 @@ pub enum MIDIEvent {
     Key(Key),
     AbsPad(AbsPad),
     AbsKnob(AbsKnob),
-    KnobButton(KnobButton)
+    KnobButton(KnobButton),
+    ShiftButton(ShiftButton),
 }
 
 #[derive(Debug)]
@@ -89,5 +90,10 @@ pub struct AbsKnob {
 #[derive(Debug)]
 pub struct KnobButton {
     pub id: u8,
+    pub pressed: bool
+}
+
+#[derive(Debug)]
+pub struct ShiftButton {
     pub pressed: bool
 }

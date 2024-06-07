@@ -31,7 +31,6 @@ mod osc_model;
 
 mod osc_client;
 mod state;
-mod midi_reading;
 
 fn main() {
     match run() {
@@ -180,8 +179,6 @@ fn run() -> Result<(), Box<dyn Error>> {
 
                     let args = midi_read_state.lock().unwrap().message_args.clone();
 
-                    println!("{:?}", event);
-
                     match event {
                         MIDIEvent::Key(key) => {
 
@@ -242,7 +239,6 @@ fn run() -> Result<(), Box<dyn Error>> {
                             }
 
 
-                            println!("PAD!");
                         }
                         MIDIEvent::AbsKnob(knob) => {
                             println!("KNOB!");
@@ -250,11 +246,19 @@ fn run() -> Result<(), Box<dyn Error>> {
                         MIDIEvent::KnobButton(button) => {
                             println!("KNOB PRESS!");
                         }
+                        MIDIEvent::ShiftButton(button) => {
+
+                            // Wipe!
+                            if button.pressed {
+                                midi_read_history.lock().unwrap().clear();
+                            }
+                        }
                         _ => {}
                     }
                 }
             }
 
+            // Use for key detection when adding new keys
             //println!("{}: {:?} (len = {})", stamp, message, message.len());
         },
         (),
