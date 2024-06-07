@@ -31,6 +31,7 @@ mod osc_model;
 
 mod osc_client;
 mod state;
+mod midi_reading;
 
 fn main() {
     match run() {
@@ -43,19 +44,18 @@ fn main() {
 
 
     TODO: STATUS
-    - We have a full history struct, with an included stringify
 
-    x* Make a key-to-octaved-letter translation function, for history ids and
-        message sends
-    * Implement message sending logic for notes and samples
-        -> Functions done, need a client
-        -> All in place, need to implement
-    * Implement history writing
-    * Implement osc settings reading from old application
-    * Create a daemon that reacts to changes in history by performing stringify
-        and writing it to clipboard (later osc)
-    * ...
-
+    Planned features:
+    - Sample shifting for pads
+    - Shift-key history wipe
+    - OSC-driven sample shifting
+        - Requires that pads have a clear ID (ideally as written on board)
+        - Requires new message (old configuration used letter-to-index)
+    - ncurses notes display, like in old keyboard
+        - A clear step towards front end
+    - backend separation
+        - Requires API definition
+        - Do as late as possible
  */
 
 fn run() -> Result<(), Box<dyn Error>> {
@@ -127,7 +127,10 @@ fn run() -> Result<(), Box<dyn Error>> {
                 osc_read_state.lock().unwrap().set_args(msg.args.clone());
             })
             .on_message("/keyboard_letter_index", &|msg| {
-                // TODO: Pads
+                // TODO: Needs new message format designed for pads - letters are out
+                //  This is front end code, too
+                let letter = msg.args.get(0).unwrap().clone().string().unwrap().chars().nth(0).unwrap();
+                let index = msg.args.get(1).unwrap().clone().int().unwrap();
             })
             .on_message("/keyboard_instrument_name", &|msg| {
                 osc_read_state.lock().unwrap().instrument_name = msg.args.get(0).unwrap().clone().string().unwrap();
