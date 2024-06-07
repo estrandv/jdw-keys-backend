@@ -1,21 +1,25 @@
-use std::ops::Index;
+use std::env::args;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bigdecimal::{BigDecimal, Zero};
-use rosc::OscType;
 
 use crate::event_model::{Event, NoteOff, NoteOn};
+use crate::state::State;
 use crate::util;
 use crate::util::duration_to_beats;
 
 pub fn stringify_history(
     history: Arc<Mutex<EventHistory>>,
-    bpm: i64,
-    quantization: BigDecimal,
-    args: Vec<OscType>,
+    state: Arc<Mutex<State>>
 ) -> String {
+
+
+    let bpm = state.lock().unwrap().bpm;
+    let quantization = state.lock().unwrap().quantization.clone();
+    let args = state.lock().unwrap().message_args.clone();
+
     let sequence = history.lock().unwrap().as_sequence(bpm, quantization.clone());
 
     let total_beats = sequence.iter()
@@ -60,11 +64,12 @@ pub struct SequentialEvent {
 
 pub struct EventHistory {
     events: Vec<Event>,
+    pub modified: bool
 }
 
 impl EventHistory {
     pub fn new() -> EventHistory {
-        EventHistory { events: Vec::new() }
+        EventHistory { events: Vec::new(), modified: false }
     }
 
     pub fn add(&mut self, event: Event) {
@@ -75,6 +80,8 @@ impl EventHistory {
         }
 
         self.events.push(event);
+
+        self.modified = true;
     }
 
     fn is_silent(&self) -> bool {
@@ -84,6 +91,8 @@ impl EventHistory {
 
     pub fn clear(&mut self) {
         self.events.clear();
+
+        self.modified = true;
     }
 
     /*

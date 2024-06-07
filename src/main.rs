@@ -1,3 +1,22 @@
+extern crate core;
+
+use std::error::Error;
+use std::io::{stdin, Write};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
+
+use bigdecimal::ToPrimitive;
+use jdw_osc_lib::osc_stack::OSCStack;
+use midir::{Ignore, MidiInput};
+use wl_clipboard_rs::copy::{MimeType, Options, Source};
+
+use crate::event_history::EventHistory;
+use crate::event_model::{Event, NoteOff, NoteOn, Silence};
+use crate::keyboard_model::MIDIEvent;
+use crate::state::State;
+
 mod keyboard_model;
 mod midi_mapping;
 mod event_history;
@@ -6,20 +25,6 @@ mod util;
 mod midi_translation;
 mod osc_model;
 mod state;
-
-use std::error::Error;
-use std::io::{stdin, stdout, Write};
-use std::sync::{Arc, Mutex};
-use std::{clone, string, thread};
-use std::time::{Duration, Instant};
-use bigdecimal::ToPrimitive;
-use jdw_osc_lib::osc_stack::OSCStack;
-
-use midir::{Ignore, MidiInput};
-use crate::event_history::EventHistory;
-use crate::event_model::{Event, NoteOff, NoteOn, Silence};
-use crate::keyboard_model::MIDIEvent;
-use crate::state::State;
 
 fn main() {
     match run() {
@@ -54,14 +59,34 @@ fn run() -> Result<(), Box<dyn Error>> {
     let state = State::new();
     let midi_read_state = Arc::new(Mutex::new(state));
     let osc_read_state = midi_read_state.clone();
+    let hist_daemon_state = midi_read_state.clone();
 
-    // TODO: History should have an "is_updated" variable and a separate poller thread in order
-    //  to perform stringify
     let history = EventHistory::new();
     let osc_read_history = Arc::new(Mutex::new(history));
     let midi_read_history = osc_read_history.clone();
+    let hist_daemon_history = osc_read_history.clone();
 
     ///
+
+    // History stringify thread
+    thread::spawn(move || {
+        let modified = hist_daemon_history.lock().unwrap().modified;
+
+        if modified {
+            hist_daemon_history.lock().unwrap().modified = false;
+            let stringified = event_history::stringify_history(
+                hist_daemon_history.clone(),
+                hist_daemon_state.clone()
+            );
+
+            // Copy to clipboard
+            let opts = Options::new();
+            opts.copy(Source::Bytes(stringified.clone().into_bytes().into()), MimeType::Autodetect).unwrap();
+        }
+
+        sleep(Duration::from_millis(100));
+    });
+
 
     // OSC Read Thread
     thread::spawn(move || {
