@@ -8,8 +8,9 @@ use rosc::OscType;
     Configurable, shared state variables.
 */
 
-struct PadsConfiguration {
-    pads: HashMap<u8, i32>, // <pad_id, sample_index>
+pub struct PadsConfiguration {
+    pub pads: HashMap<u8, i32>, // <pad_id, sample_index>
+    pub pack_name: String,
     // TODO: INdividual args, independent of key args
 }
 
@@ -22,7 +23,8 @@ impl PadsConfiguration {
             .collect();
 
         PadsConfiguration {
-            pads: base_map
+            pads: base_map,
+            pack_name: "Roland808".to_string()
         }
     }
 }
@@ -50,7 +52,7 @@ impl State {
                 OscType::String("ofs".to_string()),
                 OscType::Float(0.0),
             ],
-            instrument_name: "Roland808".to_string(),
+            instrument_name: "brute".to_string(),
             last_loop_start_time: None,
             pads_configuration: PadsConfiguration::new(),
         }

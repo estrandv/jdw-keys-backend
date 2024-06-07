@@ -128,7 +128,7 @@ impl EventHistory {
     pub fn as_sequence(&self, bpm: i64, quantization: BigDecimal) -> Vec<SequentialEvent> {
         let mut next_note_time: Option<Instant> = None;
 
-        let notes: Vec<SequentialEvent> = self
+        let mut notes: Vec<SequentialEvent> = self
             .events
             .iter()
             .rev() // Iter backwards to always have the next event time available
@@ -180,8 +180,9 @@ impl EventHistory {
                     _ => None
                 }
             })
-            .rev()
             .collect();
+
+        notes.reverse();
 
         notes
     }

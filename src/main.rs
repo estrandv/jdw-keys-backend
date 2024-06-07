@@ -1,7 +1,10 @@
 extern crate core;
 
+use std::env::args;
 use std::error::Error;
 use std::io::{stdin, Write};
+use std::net::{SocketAddrV4, UdpSocket};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::sleep;
@@ -15,6 +18,7 @@ use wl_clipboard_rs::copy::{MimeType, Options, Source};
 use crate::event_history::EventHistory;
 use crate::event_model::{Event, NoteOff, NoteOn, Silence};
 use crate::keyboard_model::MIDIEvent;
+use crate::osc_client::OscClient;
 use crate::state::State;
 
 mod keyboard_model;
@@ -24,6 +28,8 @@ mod event_model;
 mod util;
 mod midi_translation;
 mod osc_model;
+
+mod osc_client;
 mod state;
 
 fn main() {
@@ -66,25 +72,42 @@ fn run() -> Result<(), Box<dyn Error>> {
     let midi_read_history = osc_read_history.clone();
     let hist_daemon_history = osc_read_history.clone();
 
+
+    // TODO: modular in/out ports
+    let socket = UdpSocket::bind(
+        SocketAddrV4::from_str("127.0.0.1:15459").unwrap()
+    ).unwrap();
+
+    let client = OscClient::new(
+        socket,
+        SocketAddrV4::from_str("127.0.0.1:13339").unwrap()
+    );
+    let midi_read_client = Arc::new(Mutex::new(client));
+
     ///
 
     // History stringify thread
     thread::spawn(move || {
-        let modified = hist_daemon_history.lock().unwrap().modified;
 
-        if modified {
-            hist_daemon_history.lock().unwrap().modified = false;
-            let stringified = event_history::stringify_history(
-                hist_daemon_history.clone(),
-                hist_daemon_state.clone()
-            );
+        loop {
+            let modified = hist_daemon_history.lock().unwrap().modified.clone();
 
-            // Copy to clipboard
-            let opts = Options::new();
-            opts.copy(Source::Bytes(stringified.clone().into_bytes().into()), MimeType::Autodetect).unwrap();
+            if modified {
+                hist_daemon_history.lock().unwrap().modified = false;
+                let stringified = event_history::stringify_history(
+                    hist_daemon_history.clone(),
+                    hist_daemon_state.clone()
+                );
+
+                // Copy to clipboard
+                let opts = Options::new();
+                opts.copy(Source::Bytes(stringified.clone().into_bytes().into()), MimeType::Autodetect).unwrap();
+
+                println!("Copied to clipboard! {}", stringified);
+            }
+
+            sleep(Duration::from_millis(100));
         }
-
-        sleep(Duration::from_millis(100));
     });
 
 
@@ -150,6 +173,10 @@ fn run() -> Result<(), Box<dyn Error>> {
 
                     let read_time = Instant::now();
 
+                    let instrument = midi_read_state.lock().unwrap().instrument_name.clone();
+
+                    let args = midi_read_state.lock().unwrap().message_args.clone();
+
                     println!("{:?}", event);
 
                     match event {
@@ -158,24 +185,29 @@ fn run() -> Result<(), Box<dyn Error>> {
                             // E.g. "a4"
                             let history_id = midi_translation::tone_to_oletter(key.midi_note);
 
-                            let instrument = midi_read_state.lock().unwrap().instrument_name.clone();
-
-                            let args = midi_read_state.lock().unwrap().message_args.clone();
 
                             if key.pressed {
 
-                                // TODO: WIP Message POC
                                 let msg = osc_model::create_note_on(
                                     key.midi_note as i32,
                                     instrument.as_str(),
                                     args
                                 );
 
+                                midi_read_client.lock().unwrap().send(msg);
+
                                 midi_read_history.lock().unwrap().add(Event::NoteOn(NoteOn {
                                     id: history_id,
                                     time: read_time,
                                 }));
                             } else {
+
+                                let msg = osc_model::create_note_off(
+                                    key.midi_note as i32,
+                                );
+
+                                midi_read_client.lock().unwrap().send(msg);
+
                                 midi_read_history.lock().unwrap().add(Event::NoteOff(NoteOff {
                                     id: history_id,
                                     time: read_time,
@@ -183,6 +215,30 @@ fn run() -> Result<(), Box<dyn Error>> {
                             }
                         }
                         MIDIEvent::AbsPad(pad) => {
+
+                            if pad.pressed {
+
+                                let sample_index = midi_read_state.lock().unwrap()
+                                    .pads_configuration.pads.get(&pad.id).unwrap().clone();
+
+                                let sample_pack = midi_read_state.lock().unwrap()
+                                    .pads_configuration.pack_name.clone();
+
+                                let msg = osc_model::create_play_sample(
+                                    sample_index,
+                                    &sample_pack,
+                                    args
+                                );
+
+                                midi_read_client.lock().unwrap().send(msg);
+
+                                midi_read_history.lock().unwrap().add(Event::NoteOn(NoteOn {
+                                    id: sample_index.to_string(),
+                                    time: read_time,
+                                }));
+                            }
+
+
                             println!("PAD!");
                         }
                         MIDIEvent::AbsKnob(knob) => {
