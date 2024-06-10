@@ -46,7 +46,7 @@ impl State {
             quantization: BigDecimal::from_str("0.125").unwrap(),
             message_args: vec![
                 OscType::String("amp".to_string()),
-                OscType::Float(1.0),
+                OscType::Float(0.2),
                 OscType::String("relT".to_string()),
                 OscType::Float(0.2),
                 OscType::String("ofs".to_string()),

@@ -11,9 +11,7 @@ pub fn create_play_sample(index: i32, pack_name: &str, args: Vec<OscType>) -> Os
         OscType::Int(0),
     ];
 
-    for arg in args {
-        base_args.push(arg);
-    }
+    base_args.extend(args);
 
     OscPacket::Message(OscMessage {
         addr: "/play_sample".to_string(),
@@ -35,9 +33,7 @@ pub fn create_note_on(index: i32, synth_name: &str, args: Vec<OscType>) -> OscPa
         OscType::Float(freq as f32),
     ];
 
-    for arg in args {
-        base_args.push(arg);
-    }
+    base_args.extend(args);
 
     OscPacket::Message(OscMessage {
         addr: "/note_on".to_string(),

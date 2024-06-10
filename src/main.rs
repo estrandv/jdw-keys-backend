@@ -1,11 +1,13 @@
+#![feature(int_roundings)]
+#![allow(internal_features)]
+
 extern crate core;
 
-use std::env::args;
 use std::error::Error;
 use std::io::{stdin, Write};
 use std::net::{SocketAddrV4, UdpSocket};
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -18,6 +20,7 @@ use wl_clipboard_rs::copy::{MimeType, Options, Source};
 use crate::event_history::EventHistory;
 use crate::event_model::{Event, NoteOff, NoteOn, Silence};
 use crate::keyboard_model::MIDIEvent;
+use crate::midi_mapping::map;
 use crate::osc_client::OscClient;
 use crate::state::State;
 
@@ -59,10 +62,10 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn Error>> {
 
-    /// State init
+    // State init
 
     let state = State::new();
-    let midi_read_state = Arc::new(Mutex::new(state));
+    let midi_read_state = Arc::new(RwLock::new(state));
     let osc_read_state = midi_read_state.clone();
     let hist_daemon_state = midi_read_state.clone();
 
@@ -71,19 +74,22 @@ fn run() -> Result<(), Box<dyn Error>> {
     let midi_read_history = osc_read_history.clone();
     let hist_daemon_history = osc_read_history.clone();
 
-
     // TODO: modular in/out ports
     let socket = UdpSocket::bind(
         SocketAddrV4::from_str("127.0.0.1:15459").unwrap()
     ).unwrap();
 
-    let client = OscClient::new(
+    socket.set_nonblocking(true).unwrap();
+    socket.set_write_timeout(Some(Duration::from_millis(1))).unwrap();
+    socket.set_read_timeout(Some(Duration::from_millis(1))).unwrap();
+
+
+    let mut client = OscClient::new(
         socket,
+        // 13339 is router, 13331 is sc - testing if direct to sc is more efficient
         SocketAddrV4::from_str("127.0.0.1:13339").unwrap()
     );
-    let midi_read_client = Arc::new(Mutex::new(client));
 
-    ///
 
     // History stringify thread
     thread::spawn(move || {
@@ -93,19 +99,26 @@ fn run() -> Result<(), Box<dyn Error>> {
 
             if modified {
                 hist_daemon_history.lock().unwrap().modified = false;
+
+                let bpm = hist_daemon_state.read().unwrap().bpm.clone();
+                let quantization = hist_daemon_state.read().unwrap().quantization.clone();
+                let args = hist_daemon_state.read().unwrap().message_args.clone();
+
+                let sequence = hist_daemon_history.lock().unwrap().as_sequence(bpm, quantization.clone());
+
                 let stringified = event_history::stringify_history(
-                    hist_daemon_history.clone(),
-                    hist_daemon_state.clone()
+                    sequence,
+                    args
                 );
 
                 // Copy to clipboard
                 let opts = Options::new();
                 opts.copy(Source::Bytes(stringified.clone().into_bytes().into()), MimeType::Autodetect).unwrap();
 
-                println!("Copied to clipboard! {}", stringified);
+                println!("Had bpm {}, Copied to clipboard! {}", bpm, stringified);
             }
 
-            sleep(Duration::from_millis(100));
+            sleep(Duration::from_millis(50));
         }
     });
 
@@ -116,14 +129,14 @@ fn run() -> Result<(), Box<dyn Error>> {
         OSCStack::init("127.0.0.1:17777".to_string())
             .on_message("/set_bpm", &|msg| {
                 let bpm_arg = msg.args.get(0).unwrap().clone().int().unwrap().to_i64().unwrap();
-                osc_read_state.lock().unwrap().set_bpm(bpm_arg)
+                osc_read_state.write().unwrap().set_bpm(bpm_arg)
             })
             .on_message("/keyboard_quantization", &|msg| {
                 let quantization = msg.args.get(0).unwrap().clone().string().unwrap();
-                osc_read_state.lock().unwrap().set_quantization(&quantization);
+                osc_read_state.write().unwrap().set_quantization(&quantization);
             })
             .on_message("/keyboard_args", &|msg| {
-                osc_read_state.lock().unwrap().set_args(msg.args.clone());
+                osc_read_state.write().unwrap().set_args(msg.args.clone());
             })
             .on_message("/keyboard_letter_index", &|msg| {
                 // TODO: Needs new message format designed for pads - letters are out
@@ -132,12 +145,13 @@ fn run() -> Result<(), Box<dyn Error>> {
                 let index = msg.args.get(1).unwrap().clone().int().unwrap();
             })
             .on_message("/keyboard_instrument_name", &|msg| {
-                osc_read_state.lock().unwrap().instrument_name = msg.args.get(0).unwrap().clone().string().unwrap();
+                osc_read_state.write().unwrap().instrument_name = msg.args.get(0).unwrap().clone().string().unwrap();
             })
             .on_message("/loop_started", &|msg| {
 
                 // TODO: Long story short, this is the delay to expect as opposed to human-played notes
-                let first_beat_plays_at = Instant::now() + Duration::from_millis(200);
+                // UPDATE: Added delay compensation to human player, not sure how relevant this is now
+                let first_beat_plays_at = Instant::now() + Duration::from_millis(70);
                 osc_read_history.lock().unwrap().add(Event::Silence(Silence {
                     time: first_beat_plays_at,
                 }));
@@ -167,96 +181,134 @@ fn run() -> Result<(), Box<dyn Error>> {
         "midir-read-input",
         move |stamp, message, _| {
 
-            let decode = midi_mapping::map(message);
+            // TODO: Clumsy latency compensation here to offset the fact that small delays
+            //  can bias quantization towards rounding upwards.
+            let read_time = Instant::now(); // - Duration::from_millis(15);
 
-            match decode {
-                None => {}
-                Some(event) => {
+            let mut times: Vec<(Instant, &str)> = vec![(read_time, "read time")];
 
-                    let read_time = Instant::now();
+            if let Some(event) = map(message) {
+                times.push((Instant::now(), "midi resolved and matched"));
 
-                    let instrument = midi_read_state.lock().unwrap().instrument_name.clone();
+                let state_lock = midi_read_state.read().unwrap();
+                let instrument = state_lock.instrument_name.clone();
+                let args = state_lock.message_args.clone();
 
-                    let args = midi_read_state.lock().unwrap().message_args.clone();
+                times.push((Instant::now(), "locks acquired"));
 
-                    match event {
-                        MIDIEvent::Key(key) => {
+                match event {
+                    MIDIEvent::Key(key) => {
 
-                            // E.g. "a4"
-                            let history_id = midi_translation::tone_to_oletter(key.midi_note);
+                        times.push((Instant::now(), "midi type matched"));
 
+                        // E.g. "a4"
+                        let history_id = midi_translation::tone_to_oletter(key.midi_note);
 
-                            if key.pressed {
+                        if key.pressed {
 
-                                let msg = osc_model::create_note_on(
-                                    key.midi_note as i32,
-                                    instrument.as_str(),
-                                    args
-                                );
+                            times.push((Instant::now(), "tone translated"));
 
-                                midi_read_client.lock().unwrap().send(msg);
+                            let msg = osc_model::create_note_on(
+                                key.midi_note as i32,
+                                instrument.as_str(),
+                                args
+                            );
 
-                                midi_read_history.lock().unwrap().add(Event::NoteOn(NoteOn {
-                                    id: history_id,
-                                    time: read_time,
-                                }));
-                            } else {
+                            times.push((Instant::now(), "note message created"));
 
-                                let msg = osc_model::create_note_off(
-                                    key.midi_note as i32,
-                                );
+                            client.send(msg);
 
-                                midi_read_client.lock().unwrap().send(msg);
+                            times.push((Instant::now(), "send done"));
 
-                                midi_read_history.lock().unwrap().add(Event::NoteOff(NoteOff {
-                                    id: history_id,
-                                    time: read_time,
-                                }));
-                            }
+                            midi_read_history.lock().unwrap().add(Event::NoteOn(NoteOn {
+                                id: history_id,
+                                time: read_time,
+                            }));
+                        } else {
+
+                            let msg = osc_model::create_note_off(
+                                key.midi_note as i32,
+                            );
+
+                            client.send(msg);
+
+                            times.push((Instant::now(), "send done"));
+
+                            midi_read_history.lock().unwrap().add(Event::NoteOff(NoteOff {
+                                id: history_id,
+                                time: read_time,
+                            }));
                         }
-                        MIDIEvent::AbsPad(pad) => {
-
-                            if pad.pressed {
-
-                                let sample_index = midi_read_state.lock().unwrap()
-                                    .pads_configuration.pads.get(&pad.id).unwrap().clone();
-
-                                let sample_pack = midi_read_state.lock().unwrap()
-                                    .pads_configuration.pack_name.clone();
-
-                                let msg = osc_model::create_play_sample(
-                                    sample_index,
-                                    &sample_pack,
-                                    args
-                                );
-
-                                midi_read_client.lock().unwrap().send(msg);
-
-                                midi_read_history.lock().unwrap().add(Event::NoteOn(NoteOn {
-                                    id: sample_index.to_string(),
-                                    time: read_time,
-                                }));
-                            }
-
-
-                        }
-                        MIDIEvent::AbsKnob(knob) => {
-                            println!("KNOB!");
-                        }
-                        MIDIEvent::KnobButton(button) => {
-                            println!("KNOB PRESS!");
-                        }
-                        MIDIEvent::ShiftButton(button) => {
-
-                            // Wipe!
-                            if button.pressed {
-                                midi_read_history.lock().unwrap().clear();
-                            }
-                        }
-                        _ => {}
                     }
+                    MIDIEvent::AbsPad(pad) => {
+
+                        if pad.pressed {
+
+                            let sample_index = midi_read_state.read().unwrap()
+                                .pads_configuration.pads.get(&pad.id).unwrap().clone();
+
+                            let sample_pack = midi_read_state.read().unwrap()
+                                .pads_configuration.pack_name.clone();
+
+                            let msg = osc_model::create_play_sample(
+                                sample_index,
+                                &sample_pack,
+                                args
+                            );
+
+                            client.send(msg);
+
+                            times.push((Instant::now(), "send done"));
+
+                            midi_read_history.lock().unwrap().add(Event::NoteOn(NoteOn {
+                                id: sample_index.to_string(),
+                                time: read_time,
+                            }));
+                        }
+
+
+                    }
+                    MIDIEvent::AbsKnob(knob) => {
+                        //println!("KNOB!");
+                    }
+                    MIDIEvent::KnobButton(button) => {
+
+                        // TODO: 113 is top, 115 is lower
+                        // Must have memory of last played pad (history today is insufficient)
+                        // config.pads can then be modified by +1
+                        // Ideally, we should not have "113" but instead the ids from the board
+                        //  -> do this in midi translation first
+
+                        //println!("KNOB PRESS! {:?}", button);
+                    }
+                    MIDIEvent::ShiftButton(button) => {
+
+                        // Wipe!
+                        if button.pressed {
+                            midi_read_history.lock().unwrap().clear();
+                        }
+                    }
+                    _ => {}
                 }
             }
+
+            // Benching
+            let mut previous = None;
+            let mut total: u128 = 0;
+            for tuple in times {
+                match previous {
+                    Some(time) => {
+                        let ms = tuple.0.duration_since(time).as_micros();
+                        total += ms;
+                        println!("{}:{}ms", tuple.1, ms);
+                    }
+                    None => {
+                        println!("{}:0ms", tuple.1);
+                    }
+                }
+                previous = Some(tuple.0);
+            }
+            println!("Total: {}ms", total);
 
             // Use for key detection when adding new keys
             //println!("{}: {:?} (len = {})", stamp, message, message.len());

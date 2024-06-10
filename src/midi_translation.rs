@@ -12,7 +12,7 @@ pub fn tone_to_oletter(tone: u8) -> String {
 
     let letter_index = if index >= letter_amount {index % letter_amount} else {index};
     let letter = NOTE_NAMES[letter_index];
-    let octave = (tone / 11u8) + 1u8;
+    let octave = (tone / letter_amount as u8) + 1u8;
 
     format!("{}{}", letter, octave)
 
@@ -26,8 +26,10 @@ mod tests {
     fn verify() {
         assert_eq!(tone_to_oletter(0), "c1");
         assert_eq!(tone_to_oletter(1), "db1");
-        assert_eq!(tone_to_oletter(23), "b3");
+        assert_eq!(tone_to_oletter(13), "db2");
+        assert_eq!(tone_to_oletter(23), "b2");
         assert_eq!(tone_to_oletter(12), "c2");
         assert_eq!(tone_to_oletter(16), "e2");
+        assert_eq!(tone_to_oletter((12 * 4) + 9), "a5");
     }
 }

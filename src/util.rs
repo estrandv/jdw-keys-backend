@@ -2,8 +2,15 @@ use std::collections::HashMap;
 use std::num::NonZeroU64;
 use std::str::FromStr;
 use std::time::Duration;
-use bigdecimal::{BigDecimal, FromPrimitive, One, RoundingMode};
+use bigdecimal::{BigDecimal, FromPrimitive, One, RoundingMode, ToPrimitive};
 use rosc::OscType;
+
+pub fn next_power_of_two(source: BigDecimal) -> BigDecimal {
+    // Round(0) removes decimal digits
+    let integer = source.with_scale_round(0, RoundingMode::Up).to_u64().unwrap();
+    let nearest = integer.next_power_of_two();
+    BigDecimal::from_str(format!("{}", nearest).as_str()).unwrap()
+}
 
 // Round up to nearest multiple of fraction
 pub fn round_up_to_nearest(source: BigDecimal, fraction: BigDecimal) -> BigDecimal {
@@ -65,3 +72,27 @@ pub fn shuttlefiy_args(args: Vec<OscType>) -> String {
         .collect::<Vec<String>>().join(",")
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verify() {
+
+        assert_eq!(round_to_nearest(
+            BigDecimal::from_str("0.23").unwrap(),
+            BigDecimal::from_str("0.25").unwrap(),
+        ), BigDecimal::from_str("0.25").unwrap());
+
+        assert_eq!(round_to_nearest(
+            BigDecimal::from_str("0.73").unwrap(),
+            BigDecimal::from_str("0.25").unwrap(),
+        ), BigDecimal::from_str("0.75").unwrap());
+
+        assert_eq!(round_to_nearest(
+            BigDecimal::from_str("0.76").unwrap(),
+            BigDecimal::from_str("0.25").unwrap(),
+        ), BigDecimal::from_str("0.75").unwrap());
+
+    }
+}

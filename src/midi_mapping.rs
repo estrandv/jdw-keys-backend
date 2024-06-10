@@ -20,34 +20,31 @@ fn matches(event: &[u8], structure: &[IntMatch]) -> bool {
         return false;
     }
 
-    let mut result = true;
-    for i in 0..(structure.len() - 1) {
+    let fail = structure.iter().enumerate()
+        .any(|tuple| {
 
-        let content = event[i];
+            let expected = tuple.1;
 
-        let expected = structure[i].clone();
-
-        match expected {
-            IntMatch::Abs(value) => {
-                if value != content {
-                    result = false;
+            match expected {
+                IntMatch::Abs(value) => {
+                    let content = event[tuple.0];
+                    *value != content
+                }
+                IntMatch::Range(range) => {
+                    let content = event[tuple.0];
+                    !range.contains(&content)
+                },
+                IntMatch::Array(range) => {
+                    let content = event[tuple.0];
+                    !range.contains(&content)
+                }
+                _ => {
+                    false
                 }
             }
-            IntMatch::Range(range) => {
-                if !range.contains(&content) {
-                    result = false;
-                }
-            },
-            IntMatch::Array(range) => {
-                if !range.contains(&content) {
-                    result = false;
-                }
-            }
-            IntMatch::Any => {}
-        };
-    }
+        });
 
-    result
+    !fail
 }
 
 // Literal matches for "Arturia MINILAB MK2"

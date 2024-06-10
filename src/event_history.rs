@@ -1,37 +1,30 @@
-use std::env::args;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bigdecimal::{BigDecimal, Zero};
+use rosc::OscType;
 
 use crate::event_model::{Event, NoteOff, NoteOn};
-use crate::state::State;
 use crate::util;
 use crate::util::duration_to_beats;
 
+const SILENCE_REP: &str = "x";
+
 pub fn stringify_history(
-    history: Arc<Mutex<EventHistory>>,
-    state: Arc<Mutex<State>>
+    sequence: Vec<SequentialEvent>,
+    args: Vec<OscType>,
 ) -> String {
-
-
-    let bpm = state.lock().unwrap().bpm;
-    let quantization = state.lock().unwrap().quantization.clone();
-    let args = state.lock().unwrap().message_args.clone();
-
-    let sequence = history.lock().unwrap().as_sequence(bpm, quantization.clone());
 
     let total_beats = sequence.iter()
         .map(|event| event.reserved_beats.clone())
         .reduce(|a, b| a + b)
         .unwrap_or(BigDecimal::zero());
 
-    let desired_total = util::round_up_to_nearest(
-        total_beats.clone(), BigDecimal::from_str("4.0").unwrap(),
-    );
+    let desired_total = util::next_power_of_two(
+        total_beats.clone()
+    ).max(BigDecimal::from_str("4.0").unwrap());
 
-    let difference = desired_total.clone() - total_beats;
+    let difference = desired_total.clone() - total_beats.clone();
 
     let arg_string = util::shuttlefiy_args(args);
 
@@ -41,18 +34,19 @@ pub fn stringify_history(
             let mut base = format!("{}:{:.4}", seq.representation, seq.reserved_beats.normalized());
 
             if let Some(sus) = &seq.sustain_beats {
-                base += format!(",sus{:.4}", sus.normalized()).as_str();
-            }
 
+                let rounded = sus.round(2);
+                base += format!(",sus{:.4}", rounded.normalized()).as_str();
+            }
             base
 
         })
         .collect::<Vec<String>>().join(" ");
 
     // Add a silence at the end until we reach the next 4-beat
-    let diff_note = format!("_:{:.4}", difference.normalized());
+    let diff_note = format!("x:{:.4}", difference.normalized());
 
-    format!("({} {}):{},len{}", notes, diff_note, arg_string, desired_total)
+    format!("({} {}):{},len{},tot{}", notes, diff_note, arg_string, desired_total, total_beats)
 
 }
 
@@ -74,14 +68,22 @@ impl EventHistory {
 
     pub fn add(&mut self, event: Event) {
 
-        // Assume replacement of starting silence
-        if matches!(event, Event::Silence(_)) && self.is_silent() {
-            self.events.clear();
+        if self.is_silent() {
+            if matches!(event, Event::Silence(_)) {
+                // Assume replacement of starting silence
+                self.events.clear();
+            }
+
+            self.events.push(event);
+            self.modified = true;
+
+        } else {
+            if !matches!(event, Event::Silence(_)) {
+                // Ignore silence appended to running sequences
+                self.events.push(event);
+                self.modified = true;
+            }
         }
-
-        self.events.push(event);
-
-        self.modified = true;
     }
 
     fn is_silent(&self) -> bool {
@@ -172,7 +174,7 @@ impl EventHistory {
                         );
 
                         Some(SequentialEvent {
-                            representation: "_".to_string(),
+                            representation: SILENCE_REP.to_string(),
                             reserved_beats: time_beats,
                             sustain_beats: None,
                         })
@@ -187,3 +189,6 @@ impl EventHistory {
         notes
     }
 }
+
+#[cfg(test)]
+mod tests {}
