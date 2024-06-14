@@ -1,9 +1,19 @@
 use std::collections::HashMap;
 use std::num::NonZeroU64;
+use std::ops::Range;
 use std::str::FromStr;
 use std::time::Duration;
 use bigdecimal::{BigDecimal, FromPrimitive, One, RoundingMode, ToPrimitive};
 use rosc::OscType;
+
+pub fn midi_to_float(range: Range<f32>, value: u8) -> f32 {
+    const MIDI_RANGE: f32 = 127.0;
+    let min = range.start;
+    let max = range.end;
+    let diff = max - min;
+    let step = diff / MIDI_RANGE;
+    ((value as f32) * step) - min.abs()
+}
 
 pub fn next_power_of_two(source: BigDecimal) -> BigDecimal {
     // Round(0) removes decimal digits

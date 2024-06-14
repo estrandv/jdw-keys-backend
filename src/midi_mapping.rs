@@ -47,8 +47,29 @@ fn matches(event: &[u8], structure: &[IntMatch]) -> bool {
     !fail
 }
 
+
 // Literal matches for "Arturia MINILAB MK2"
 pub fn map(event: &[u8]) -> Option<MIDIEvent> {
+
+    // Zero-indexed order of the knobs as written on the Arturia (index + 1 resolves the written id).
+    const ABS_KNOB_IDS: [u8; 16] = [
+        0u8, // Since "1" is not an abs knob, blank it
+        74u8, // This should be knob "2", etc.
+        71u8,
+        76u8,
+        77u8,
+        93u8,
+        73u8,
+        75u8,
+        0u8, // "9", also a relative knob
+        18u8,
+        19u8,
+        16u8,
+        17u8,
+        91u8,
+        79u8,
+        72u8,
+    ];
 
     let mut result: Option<MIDIEvent> = None;
 
@@ -82,8 +103,9 @@ pub fn map(event: &[u8]) -> Option<MIDIEvent> {
         ]),
         IntMatch::Any
     ]) {
-        // TODO: Id as actual id on board?
-        result = Some(MIDIEvent::AbsKnob(AbsKnob { id: event[1], value: event[2] }))
+        let id = ABS_KNOB_IDS.iter().position(|ele| &event[1] == ele)
+            .expect("Bad mapping; unexpected knob index") + 1;
+        result = Some(MIDIEvent::AbsKnob(AbsKnob { id: id as u8, value: event[2] }));
     }
     else if matches(event, &[
         IntMatch::Abs(176u8),

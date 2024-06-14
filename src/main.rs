@@ -266,10 +266,14 @@ fn run() -> Result<(), Box<dyn Error>> {
                             }));
                         }
 
-
                     }
                     MIDIEvent::AbsKnob(knob) => {
-                        //println!("KNOB!");
+
+                        // TODO: Range must be state-configurable
+                        let value = util::midi_to_float(0.0..2.0, knob.value);
+                        let msg = osc_model::create_control_bus_mod(knob.id as i32, value);
+                        client.send(msg);
+                        println!("{:?}, {}", knob, value);
                     }
                     MIDIEvent::KnobButton(button) => {
 
@@ -293,7 +297,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             }
 
             // Benching
-            let mut previous = None;
+/*            let mut previous = None;
             let mut total: u128 = 0;
             for tuple in times {
                 match previous {
@@ -308,7 +312,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 }
                 previous = Some(tuple.0);
             }
-            println!("Total: {}ms", total);
+            println!("Total: {}ms", total);*/
 
             // Use for key detection when adding new keys
             //println!("{}: {:?} (len = {})", stamp, message, message.len());

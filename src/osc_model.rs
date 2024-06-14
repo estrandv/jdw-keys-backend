@@ -1,6 +1,16 @@
 use bigdecimal::ToPrimitive;
 use rosc::{OscMessage, OscPacket, OscType};
 
+pub fn create_control_bus_mod(bus: i32, value: f32) -> OscPacket {
+    OscPacket::Message(OscMessage {
+        addr: "/c_set".to_string(),
+        args: vec![
+            OscType::Int(bus),
+            OscType::Float(value)
+        ],
+    })
+}
+
 pub fn create_play_sample(index: i32, pack_name: &str, args: Vec<OscType>) -> OscPacket {
 
     let mut base_args = vec![
