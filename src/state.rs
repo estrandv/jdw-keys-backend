@@ -11,7 +11,7 @@ use rosc::OscType;
 pub struct PadsConfiguration {
     pub pads: HashMap<u8, i32>, // <pad_id, sample_index>
     pub pack_name: String,
-    // TODO: INdividual args, independent of key args
+    pub args: Vec<OscType>,
 }
 
 impl PadsConfiguration {
@@ -24,7 +24,8 @@ impl PadsConfiguration {
 
         PadsConfiguration {
             pads: base_map,
-            pack_name: "Roland808".to_string()
+            pack_name: "EMU_EDrum".to_string(),
+            args: Vec::new()
         }
     }
 }

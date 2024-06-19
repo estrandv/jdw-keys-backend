@@ -71,6 +71,17 @@ pub fn map(event: &[u8]) -> Option<MIDIEvent> {
         72u8,
     ];
 
+    const PAD_IDS: [u8; 8] = [
+        22u8,
+        23u8,
+        24u8,
+        25u8,
+        26u8,
+        27u8,
+        28u8,
+        29u8,
+    ];
+
     let mut result: Option<MIDIEvent> = None;
 
     if matches(event, &[
@@ -86,12 +97,16 @@ pub fn map(event: &[u8]) -> Option<MIDIEvent> {
     }
     else if matches(event, &[
         IntMatch::Abs(176u8),
-        IntMatch::Range(22u8..29u8),
+        IntMatch::Range(22u8..30u8),
         IntMatch::Array(&[0u8, 127u8])
     ]) {
+
+        // Assign to one of 1-8, carelessly dumping anytihng unknown on "13"
+        let id = (PAD_IDS.iter().position(|e| e == &event[1]).unwrap_or(12) as u8) + 1u8;
+
         // TODO: Id as actual id on board?
         result = Some(MIDIEvent::AbsPad(AbsPad {
-            id: event[1],
+            id,
             pressed: event[2] == 127u8,
         }));
     }

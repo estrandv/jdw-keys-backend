@@ -7,7 +7,7 @@ use std::error::Error;
 use std::io::{stdin, Write};
 use std::net::{SocketAddrV4, UdpSocket};
 use std::str::FromStr;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -23,6 +23,9 @@ use crate::keyboard_model::MIDIEvent;
 use crate::midi_mapping::map;
 use crate::osc_client::OscClient;
 use crate::state::State;
+
+use itertools::Itertools;
+
 
 mod keyboard_model;
 mod midi_mapping;
@@ -65,7 +68,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     // State init
 
     let state = State::new();
-    let midi_read_state = Arc::new(RwLock::new(state));
+    let midi_read_state = Arc::new(Mutex::new(state));
     let osc_read_state = midi_read_state.clone();
     let hist_daemon_state = midi_read_state.clone();
 
@@ -100,9 +103,9 @@ fn run() -> Result<(), Box<dyn Error>> {
             if modified {
                 hist_daemon_history.lock().unwrap().modified = false;
 
-                let bpm = hist_daemon_state.read().unwrap().bpm.clone();
-                let quantization = hist_daemon_state.read().unwrap().quantization.clone();
-                let args = hist_daemon_state.read().unwrap().message_args.clone();
+                let bpm = hist_daemon_state.lock().unwrap().bpm.clone();
+                let quantization = hist_daemon_state.lock().unwrap().quantization.clone();
+                let args = hist_daemon_state.lock().unwrap().message_args.clone();
 
                 let sequence = hist_daemon_history.lock().unwrap().as_sequence(bpm, quantization.clone());
 
@@ -129,23 +132,39 @@ fn run() -> Result<(), Box<dyn Error>> {
         OSCStack::init("127.0.0.1:17777".to_string())
             .on_message("/set_bpm", &|msg| {
                 let bpm_arg = msg.args.get(0).unwrap().clone().int().unwrap().to_i64().unwrap();
-                osc_read_state.write().unwrap().set_bpm(bpm_arg)
+                osc_read_state.lock().unwrap().set_bpm(bpm_arg)
             })
             .on_message("/keyboard_quantization", &|msg| {
                 let quantization = msg.args.get(0).unwrap().clone().string().unwrap();
-                osc_read_state.write().unwrap().set_quantization(&quantization);
+                osc_read_state.lock().unwrap().set_quantization(&quantization);
             })
             .on_message("/keyboard_args", &|msg| {
-                osc_read_state.write().unwrap().set_args(msg.args.clone());
+                osc_read_state.lock().unwrap().set_args(msg.args.clone());
             })
-            .on_message("/keyboard_letter_index", &|msg| {
-                // TODO: Needs new message format designed for pads - letters are out
-                //  This is front end code, too
-                let letter = msg.args.get(0).unwrap().clone().string().unwrap().chars().nth(0).unwrap();
-                let index = msg.args.get(1).unwrap().clone().int().unwrap();
+            .on_message("/keyboard_pad_samples", &|msg| {
+                // Iterate osc args in pairs
+                for w in msg.args.chunks(2) {
+                    let pad_id = w[0].clone().int().unwrap() as u8;
+                    let sample_index = w[1].clone().int().unwrap();
+
+                    osc_read_state.lock().unwrap().pads_configuration.pads.insert(pad_id, sample_index).unwrap();
+                }
+
+            })
+            .on_message("/keyboard_pad_pack", &|msg| {
+
+                let name = msg.args.get(0).cloned().unwrap().string().unwrap();
+                println!("CHANGING SAMPLER TO {}", name);
+                osc_read_state.lock().unwrap().pads_configuration.pack_name = name;
+
+            })
+            .on_message("/keyboard_pad_args", &|msg| {
+
+                osc_read_state.lock().unwrap().pads_configuration.args = msg.args.clone();
+
             })
             .on_message("/keyboard_instrument_name", &|msg| {
-                osc_read_state.write().unwrap().instrument_name = msg.args.get(0).unwrap().clone().string().unwrap();
+                osc_read_state.lock().unwrap().instrument_name = msg.args.get(0).unwrap().clone().string().unwrap();
             })
             .on_message("/loop_started", &|msg| {
 
@@ -175,6 +194,8 @@ fn run() -> Result<(), Box<dyn Error>> {
     println!("\nOpening connection");
     let in_port_name = midi_in.port_name(&arturia_port)?;
 
+    let mut last_played_pad: Option<u8> = None;
+
     // _conn_in needs to be a named parameter, because it needs to be kept alive until the end of the scope
     let _conn_in = midi_in.connect(
         &arturia_port,
@@ -190,9 +211,10 @@ fn run() -> Result<(), Box<dyn Error>> {
             if let Some(event) = map(message) {
                 times.push((Instant::now(), "midi resolved and matched"));
 
-                let state_lock = midi_read_state.read().unwrap();
+                let state_lock = midi_read_state.lock().unwrap();
                 let instrument = state_lock.instrument_name.clone();
                 let args = state_lock.message_args.clone();
+                drop(state_lock);
 
                 times.push((Instant::now(), "locks acquired"));
 
@@ -244,16 +266,21 @@ fn run() -> Result<(), Box<dyn Error>> {
 
                         if pad.pressed {
 
-                            let sample_index = midi_read_state.read().unwrap()
+                            let state_read = midi_read_state.lock().unwrap();
+
+                            let sample_index = state_read
                                 .pads_configuration.pads.get(&pad.id).unwrap().clone();
 
-                            let sample_pack = midi_read_state.read().unwrap()
+                            let sample_pack = state_read
                                 .pads_configuration.pack_name.clone();
+
+                            let pad_args = state_read
+                                .pads_configuration.args.clone();
 
                             let msg = osc_model::create_play_sample(
                                 sample_index,
                                 &sample_pack,
-                                args
+                                pad_args
                             );
 
                             client.send(msg);
@@ -264,6 +291,11 @@ fn run() -> Result<(), Box<dyn Error>> {
                                 id: sample_index.to_string(),
                                 time: read_time,
                             }));
+
+                            last_played_pad = Some(pad.id);
+
+                            drop(state_read); // Should not be necessary but I've had issues
+
                         }
 
                     }
@@ -277,11 +309,35 @@ fn run() -> Result<(), Box<dyn Error>> {
                     }
                     MIDIEvent::KnobButton(button) => {
 
-                        // TODO: 113 is top, 115 is lower
-                        // Must have memory of last played pad (history today is insufficient)
-                        // config.pads can then be modified by +1
-                        // Ideally, we should not have "113" but instead the ids from the board
-                        //  -> do this in midi translation first
+                        println!("Pressed a knob");
+
+                        if let Some(pad) = last_played_pad {
+
+                            if button.pressed {
+                                // TODO: 113 is top, 115 is lower
+                                let modifier = if button.id == 115u8 {-1} else {1};
+
+                                let mut state = midi_read_state.lock().unwrap();
+
+                                let existing_value = state.pads_configuration.pads.get(&pad).unwrap().clone();
+
+                                let new_value = (existing_value + modifier).max(0);
+
+                                state.pads_configuration.pads.insert(pad, new_value);
+
+                                // Play the new configuration for easy browsing
+                                let sample_pack = state
+                                    .pads_configuration.pack_name.clone();
+
+                                let msg = osc_model::create_play_sample(
+                                    new_value,
+                                    &sample_pack,
+                                    args
+                                );
+
+                                client.send(msg);
+                            }
+                        }
 
                         //println!("KNOB PRESS! {:?}", button);
                     }
@@ -294,6 +350,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                     }
                     _ => {}
                 }
+
             }
 
             // Benching
@@ -315,7 +372,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             println!("Total: {}ms", total);*/
 
             // Use for key detection when adding new keys
-            //println!("{}: {:?} (len = {})", stamp, message, message.len());
+            println!("{}: {:?} (len = {})", stamp, message, message.len());
         },
         (),
     )?;
