@@ -10,44 +10,45 @@ use crate::util::duration_to_beats;
 
 const SILENCE_REP: &str = "x";
 
-pub fn stringify_history(
-    sequence: Vec<SequentialEvent>,
-    args: Vec<OscType>,
-) -> String {
-
-    let total_beats = sequence.iter()
+pub fn stringify_history(sequence: Vec<SequentialEvent>, args: Vec<OscType>) -> String {
+    let total_beats = sequence
+        .iter()
         .map(|event| event.reserved_beats.clone())
         .reduce(|a, b| a + b)
         .unwrap_or(BigDecimal::zero());
 
-    let desired_total = util::next_power_of_two(
-        total_beats.clone()
-    ).max(BigDecimal::from_str("4.0").unwrap());
+    let desired_total =
+        util::next_power_of_two(total_beats.clone()).max(BigDecimal::from_str("4.0").unwrap());
 
     let difference = desired_total.clone() - total_beats.clone();
 
     let arg_string = util::shuttlefiy_args(args);
 
-    let notes = sequence.iter()
+    let notes = sequence
+        .iter()
         .map(|seq| {
-
-            let mut base = format!("{}:{:.4}", seq.representation, seq.reserved_beats.normalized());
+            let mut base = format!(
+                "{}:{:.4}",
+                seq.representation,
+                seq.reserved_beats.normalized()
+            );
 
             if let Some(sus) = &seq.sustain_beats {
-
                 let rounded = sus.round(2);
-                base += format!(",sus{:.4}", rounded.normalized()).as_str();
+                //TODO: COMMENTING THIS, ANNOYING SPAM base += format!(",sus{:.4}", rounded.normalized()).as_str();
             }
             base
-
         })
-        .collect::<Vec<String>>().join(" ");
+        .collect::<Vec<String>>()
+        .join(" ");
 
     // Add a silence at the end until we reach the next 4-beat
     let diff_note = format!("x:{:.4}", difference.normalized());
 
-    format!("({} {}):{},len{},tot{}", notes, diff_note, arg_string, desired_total, total_beats)
-
+    format!(
+        "({} {}):{},len{},tot{}",
+        notes, diff_note, arg_string, desired_total, total_beats
+    )
 }
 
 pub struct SequentialEvent {
@@ -58,16 +59,18 @@ pub struct SequentialEvent {
 
 pub struct EventHistory {
     events: Vec<Event>,
-    pub modified: bool
+    pub modified: bool,
 }
 
 impl EventHistory {
     pub fn new() -> EventHistory {
-        EventHistory { events: Vec::new(), modified: false }
+        EventHistory {
+            events: Vec::new(),
+            modified: false,
+        }
     }
 
     pub fn add(&mut self, event: Event) {
-
         if self.is_silent() {
             if matches!(event, Event::Silence(_)) {
                 // Assume replacement of starting silence
@@ -76,7 +79,6 @@ impl EventHistory {
 
             self.events.push(event);
             self.modified = true;
-
         } else {
             if !matches!(event, Event::Silence(_)) {
                 // Ignore silence appended to running sequences
@@ -87,8 +89,11 @@ impl EventHistory {
     }
 
     fn is_silent(&self) -> bool {
-        self.events.is_empty() || self.events.iter()
-            .all(|event| matches!(event, Event::Silence(_)))
+        self.events.is_empty()
+            || self
+                .events
+                .iter()
+                .all(|event| matches!(event, Event::Silence(_)))
     }
 
     pub fn clear(&mut self) {
@@ -134,53 +139,48 @@ impl EventHistory {
             .events
             .iter()
             .rev() // Iter backwards to always have the next event time available
-            .filter_map(|event| {
-                match event {
-                    Event::NoteOn(note_on) => {
-                        let time = next_note_time
-                            .map(|next| next.duration_since(note_on.time))
-                            .unwrap_or(Duration::ZERO);
+            .filter_map(|event| match event {
+                Event::NoteOn(note_on) => {
+                    let time = next_note_time
+                        .map(|next| next.duration_since(note_on.time))
+                        .unwrap_or(Duration::ZERO);
 
-                        next_note_time = Some(note_on.time.clone());
+                    next_note_time = Some(note_on.time.clone());
 
-                        let sustain_beats: Option<BigDecimal> = self
-                            .get_sustain_dur(note_on)
-                            .map(|dur| util::round_to_nearest(
+                    let sustain_beats: Option<BigDecimal> =
+                        self.get_sustain_dur(note_on).map(|dur| {
+                            util::round_to_nearest(
                                 duration_to_beats(dur, bpm),
                                 quantization.clone(),
-                            ));
+                            )
+                        });
 
-                        let time_beats = util::round_to_nearest(
-                            duration_to_beats(time, bpm),
-                            quantization.clone(),
-                        );
+                    let time_beats =
+                        util::round_to_nearest(duration_to_beats(time, bpm), quantization.clone());
 
-                        Some(SequentialEvent {
-                            representation: note_on.id.to_string(),
-                            reserved_beats: time_beats,
-                            sustain_beats,
-                        })
-                    }
-                    Event::Silence(silence) => {
-                        let time = next_note_time
-                            .map(|next| next.duration_since(silence.time.clone()))
-                            .unwrap_or(Duration::ZERO);
-
-                        next_note_time = Some(silence.time);
-
-                        let time_beats = util::round_to_nearest(
-                            duration_to_beats(time, bpm),
-                            quantization.clone(),
-                        );
-
-                        Some(SequentialEvent {
-                            representation: SILENCE_REP.to_string(),
-                            reserved_beats: time_beats,
-                            sustain_beats: None,
-                        })
-                    }
-                    _ => None
+                    Some(SequentialEvent {
+                        representation: note_on.id.to_string(),
+                        reserved_beats: time_beats,
+                        sustain_beats,
+                    })
                 }
+                Event::Silence(silence) => {
+                    let time = next_note_time
+                        .map(|next| next.duration_since(silence.time.clone()))
+                        .unwrap_or(Duration::ZERO);
+
+                    next_note_time = Some(silence.time);
+
+                    let time_beats =
+                        util::round_to_nearest(duration_to_beats(time, bpm), quantization.clone());
+
+                    Some(SequentialEvent {
+                        representation: SILENCE_REP.to_string(),
+                        reserved_beats: time_beats,
+                        sustain_beats: None,
+                    })
+                }
+                _ => None,
             })
             .collect();
 
