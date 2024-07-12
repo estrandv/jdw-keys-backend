@@ -15,6 +15,8 @@ use std::time::{Duration, Instant};
 use bigdecimal::ToPrimitive;
 use jdw_osc_lib::osc_stack::OSCStack;
 use midir::{Ignore, MidiInput};
+use ringbuf::traits::{Consumer, Split};
+use ringbuf::HeapRb;
 use wl_clipboard_rs::copy::{MimeType, Options, Source};
 
 use crate::event_history::EventHistory;
@@ -36,6 +38,7 @@ mod util;
 
 mod osc_client;
 mod state;
+mod midi_read_daemon;
 
 fn main() {
     match run() {
@@ -63,6 +66,26 @@ fn main() {
 */
 
 fn run() -> Result<(), Box<dyn Error>> {
+
+    /*
+
+        HEAPRB & STRUCTURING FOR REUSE WITH KEYBOARD
+        - Sequencer has a working model for oscStack, where we combine an arc with the publish end of the heap
+            -> So there can be a small lock delay for incoming, but incoming is just configuration anyway
+        - Anything read and published by OSC should be identical, so the OSCStack can be moved into its own daemon
+            that behaves the same in both applications (publishing a standard message)
+        - Similarly, the MIDIEvent struct (as a result of midi_mapping functions done on midi read loop) should be 
+            a published part as the end product of another daemon
+            -> It is up to the keyboard translator to treat it as the correct event (e.g. key or abspad)
+        
+
+    */
+
+    // NOTE: I have no idea what an appropriate capacity is 
+    let midi_pipe = HeapRb::<MIDIEvent>::new(100);
+    let (mut midi_pub, mut midi_sub) = midi_pipe.split();
+
+
     // State init
 
     let state = State::new();
@@ -197,54 +220,27 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     // Start reading MIDI
 
-    let mut input = String::new();
+    thread::spawn(move || {
+        let mut last_played_pad: Option<u8> = None;
 
-    let mut midi_in = MidiInput::new("midir reading input")?;
-    midi_in.ignore(Ignore::None);
-
-    let arturia_id = "Arturia MiniLab mkII";
-
-    let arturia_port = midi_in
-        .ports()
-        .into_iter()
-        .find(|port| midi_in.port_name(port).unwrap().contains(arturia_id))
-        .expect("No Arturia MiniLab Keyboard found!");
-
-    println!("\nOpening connection");
-    let in_port_name = midi_in.port_name(&arturia_port)?;
-
-    let mut last_played_pad: Option<u8> = None;
-
-    // _conn_in needs to be a named parameter, because it needs to be kept alive until the end of the scope
-    let _conn_in = midi_in.connect(
-        &arturia_port,
-        "midir-read-input",
-        move |stamp, message, _| {
-            // TODO: Clumsy latency compensation here to offset the fact that small delays
-            //  can bias quantization towards rounding upwards.
+        loop {
             let read_time = Instant::now(); // - Duration::from_millis(15);
 
-            let mut times: Vec<(Instant, &str)> = vec![(read_time, "read time")];
-
-            if let Some(event) = map(message) {
-                times.push((Instant::now(), "midi resolved and matched"));
+            while let Some(event) = midi_sub.try_pop() {
 
                 let state_lock = midi_read_state.lock().unwrap();
                 let instrument = state_lock.instrument_name.clone();
                 let args = state_lock.message_args.clone();
                 drop(state_lock);
 
-                times.push((Instant::now(), "locks acquired"));
 
                 match event {
                     MIDIEvent::Key(key) => {
-                        times.push((Instant::now(), "midi type matched"));
 
                         // E.g. "a4"
                         let history_id = midi_translation::tone_to_oletter(key.midi_note);
 
                         if key.pressed {
-                            times.push((Instant::now(), "tone translated"));
 
                             let msg = osc_model::create_note_on(
                                 key.midi_note as i32,
@@ -252,11 +248,10 @@ fn run() -> Result<(), Box<dyn Error>> {
                                 args,
                             );
 
-                            times.push((Instant::now(), "note message created"));
 
                             client.send(msg);
 
-                            times.push((Instant::now(), "send done"));
+
 
                             midi_read_history.lock().unwrap().add(Event::NoteOn(NoteOn {
                                 id: history_id,
@@ -267,7 +262,6 @@ fn run() -> Result<(), Box<dyn Error>> {
 
                             client.send(msg);
 
-                            times.push((Instant::now(), "send done"));
 
                             midi_read_history
                                 .lock()
@@ -298,7 +292,6 @@ fn run() -> Result<(), Box<dyn Error>> {
 
                             client.send(msg);
 
-                            times.push((Instant::now(), "send done"));
 
                             midi_read_history.lock().unwrap().add(Event::NoteOn(NoteOn {
                                 id: sample_index.to_string(),
@@ -355,39 +348,9 @@ fn run() -> Result<(), Box<dyn Error>> {
                     _ => {}
                 }
             }
+        }
+    });
 
-            // Benching
-            /*            let mut previous = None;
-            let mut total: u128 = 0;
-            for tuple in times {
-                match previous {
-                    Some(time) => {
-                        let ms = tuple.0.duration_since(time).as_micros();
-                        total += ms;
-                        println!("{}:{}ms", tuple.1, ms);
-                    }
-                    None => {
-                        println!("{}:0ms", tuple.1);
-                    }
-                }
-                previous = Some(tuple.0);
-            }
-            println!("Total: {}ms", total);*/
+    midi_read_daemon::begin(midi_pub)
 
-            // Use for key detection when adding new keys
-            println!("{}: {:?} (len = {})", stamp, message, message.len());
-        },
-        (),
-    )?;
-
-    println!(
-        "Connection open, reading input from '{}' (press enter to exit) ...",
-        in_port_name
-    );
-
-    input.clear();
-    stdin().read_line(&mut input)?; // wait for next enter key press
-
-    println!("Closing connection");
-    Ok(())
 }
