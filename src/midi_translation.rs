@@ -1,4 +1,4 @@
-const NOTE_NAMES: [&str; 12] = ["c", "db", "d", "eb", "e", "f", "gb",
+pub const NOTE_NAMES: [&str; 12] = ["c", "db", "d", "eb", "e", "f", "gb",
 "g", "ab", "a", "bb", "b"];
 
 pub fn tone_to_oletter(tone: u8) -> String {

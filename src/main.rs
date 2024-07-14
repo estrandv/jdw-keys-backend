@@ -39,6 +39,7 @@ mod util;
 mod osc_client;
 mod state;
 mod midi_read_daemon;
+mod ncurses_daemon;
 
 fn main() {
     match run() {
@@ -77,6 +78,11 @@ fn run() -> Result<(), Box<dyn Error>> {
         - Similarly, the MIDIEvent struct (as a result of midi_mapping functions done on midi read loop) should be 
             a published part as the end product of another daemon
             -> It is up to the keyboard translator to treat it as the correct event (e.g. key or abspad)
+
+
+        => Update
+            - midi event pipe was a success. Easiest way forward is a separate keyboard daemon that makes simple midi events 
+                without any initial configuration 
         
 
     */
