@@ -53,7 +53,7 @@ impl State {
                 OscType::String("ofs".to_string()),
                 OscType::Float(0.0),
             ],
-            instrument_name: "brute".to_string(),
+            instrument_name: "aPad".to_string(),
             last_loop_start_time: None,
             pads_configuration: PadsConfiguration::new(),
         }

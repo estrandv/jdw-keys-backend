@@ -254,6 +254,8 @@ fn run() -> Result<(), Box<dyn Error>> {
                                 args,
                             );
 
+                            println!("SENDING KEYPRESS {} {}", key.midi_note, instrument);
+
 
                             client.send(msg);
 
@@ -322,6 +324,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                         if let Some(pad) = last_played_pad {
                             if button.pressed {
                                 // TODO: 113 is top, 115 is lower
+                                // Note duplicate logic in ncurses daemon 
                                 let modifier = if button.id == 115u8 { -1 } else { 1 };
 
                                 let mut state = midi_read_state.lock().unwrap();
@@ -357,6 +360,9 @@ fn run() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    midi_read_daemon::begin(midi_pub)
+    //midi_read_daemon::begin(midi_pub)
+    ncurses_daemon::begin(midi_pub).unwrap();
+    // TODO: Effectively no error handling whatsoever - should be streamlined
+    Ok(())
 
 }
