@@ -22,33 +22,36 @@ pub fn stringify_history(sequence: Vec<SequentialEvent>, args: Vec<OscType>) -> 
 
     let difference = desired_total.clone() - total_beats.clone();
 
-    let arg_string = util::shuttlefiy_args(args);
+    // TODO: Instead rely on billboard defaults, but this really should be a config
+    //let arg_string = util::shuttlefiy_args(args);
 
-    let notes = sequence
-        .iter()
-        .map(|seq| {
-            let mut base = format!(
-                "{}:{:.4}",
-                seq.representation,
-                seq.reserved_beats.normalized()
-            );
+    // Somewhat roundabout looping to easily access "is last element" for the final padding silence
+    let mut iterator = sequence.iter().peekable();
+    let mut raw_notes: Vec<String> = Vec::new();
+    while let Some(note) = iterator.next() {
+        let bonus = if iterator.peek().is_none() {
+            difference.normalized()
+        } else {
+            BigDecimal::zero()
+        };
 
-            if let Some(sus) = &seq.sustain_beats {
-                let rounded = sus.round(2);
-                //TODO: COMMENTING THIS, ANNOYING SPAM base += format!(",sus{:.4}", rounded.normalized()).as_str();
-            }
-            base
-        })
-        .collect::<Vec<String>>()
-        .join(" ");
+        let base: String = format!(
+            "{}:{:.4}",
+            note.representation,
+            note.reserved_beats.normalized() + bonus
+        );
 
-    // Add a silence at the end until we reach the next 4-beat
-    let diff_note = format!("x:{:.4}", difference.normalized());
+        if let Some(sus) = &note.sustain_beats {
+            let rounded = sus.round(2);
+            //TODO: COMMENTING THIS, ANNOYING SPAM base += format!(",sus{:.4}", rounded.normalized()).as_str();
+        }
 
-    format!(
-        "({} {}):{},len{},tot{}",
-        notes, diff_note, arg_string, desired_total, total_beats
-    )
+        raw_notes.push(base);
+    }
+
+    let notes = raw_notes.join(" ");
+
+    format!("({}):len{},tot{}", notes, desired_total, total_beats)
 }
 
 pub struct SequentialEvent {

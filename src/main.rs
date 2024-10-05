@@ -128,6 +128,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     // History stringify thread
     thread::spawn(move || {
         loop {
+            std::thread::sleep(Duration::from_millis(50));
             let modified = hist_daemon_history.lock().unwrap().modified.clone();
 
             if modified {
@@ -247,6 +248,9 @@ fn run() -> Result<(), Box<dyn Error>> {
         let mut last_played_pad: Option<u8> = None;
 
         loop {
+            // TODO: Find a sweetspot between lag and cpu usage
+            std::thread::sleep(Duration::from_nanos(500000));
+
             let read_time = Instant::now(); // - Duration::from_millis(15);
 
             while let Some(event) = midi_sub.try_pop() {

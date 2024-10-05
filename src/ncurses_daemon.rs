@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use notcurses::*;
 use ringbuf::storage::Heap;
@@ -40,10 +40,6 @@ impl NcursesDaemon {
         }
     }
 
-    // TODO: Changing octaves
-    // We don't want to read from a lock every time we press a key; better if we have an internal state that can be modified on the fly
-    // Supposedly we can do this by making the daemon a struct that has a state
-    // Then, the loop will clone the state on each iteration. Maybe this works? Or try-pop a refcircle?
     pub fn begin(&mut self) -> NotcursesResult<()> {
         // Init sensible default configuration
 
@@ -67,6 +63,8 @@ impl NcursesDaemon {
         let mut shift_pressed = false;
 
         loop {
+            // TODO: Find a sweetspot between lag and cpu usage
+            std::thread::sleep(Duration::from_nanos(500000));
             let state = match self.state_sub.try_pop() {
                 Some(val) => {
                     curr_state.octave = val.octave;
