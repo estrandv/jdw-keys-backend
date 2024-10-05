@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use notcurses::*;
 use ringbuf::storage::Heap;
-use ringbuf::traits::Producer;
+use ringbuf::traits::{Consumer, Producer};
 use ringbuf::wrap::caching::Caching;
 use ringbuf::SharedRb;
 
@@ -19,133 +19,167 @@ const PAD_KEYS: [char; 8] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k'];
 
 const MOD_KEYS: [char; 2] = ['+', '-'];
 
+#[derive(Clone)]
 pub struct KeyboardModeState {
-    synth: bool,
-    octave: u8,
+    pub octave: u8,
 }
 
-pub fn begin(
-    mut publisher: Caching<Arc<SharedRb<Heap<MIDIEvent>>>, true, false>,
-) -> NotcursesResult<()> {
-    // Init sensible default configuration
+pub struct NcursesDaemon {
+    publisher: Caching<Arc<SharedRb<Heap<MIDIEvent>>>, true, false>,
+    state_sub: Caching<Arc<SharedRb<Heap<KeyboardModeState>>>, false, true>,
+}
 
-    let mut state = KeyboardModeState {
-        synth: true,
-        octave: 5,
-    };
-
-    // Init ncurses
-
-    let mut nc = Notcurses::new()?;
-    nc.mice_enable(MiceEvents::All)?;
-
-    let mut plane = Plane::new(&mut nc)?;
-    plane.set_scrolling(true);
-
-    putstrln!(+render plane,
-        "\n{0}\nStarting non-blocking event loop. Press `F01` to exit:\n{}\n",
-        "-".repeat(50)
-    )?;
-
-    // Begin loop
-
-    let mut ctrl_pressed = false;
-
-    loop {
-        // TODO: Read any incoming osc state mods in this loop as well
-
-        let event = nc.poll_event()?;
-
-        if event.received() {
-            //putstrln![+render plane, "\n{event:?}"]?;
-
-            for pad_key in PAD_KEYS {
-                // Register key press
-                if event.is_char(pad_key) && event.is_press() {
-                    // Sampler
-
-                    let pad_id =
-                        PAD_KEYS.iter().position(|&e| e == pad_key).unwrap() as u8 + 1;
-
-                    let event = MIDIEvent::AbsPad(AbsPad {
-                        id: pad_id,
-                        pressed: true,
-                    });
-
-                    publisher.try_push(event).unwrap();
-                }
-            }
-
-            for char_key in KEYBOARD_KEYS {
-                // Register key release
-                if event.is_char(char_key) && event.is_release() && state.synth {
-                    let midi_note_raw =
-                        KEYBOARD_KEYS.iter().position(|&e| e == char_key).unwrap() as u8;
-                    let midi_note = (state.octave * 12u8) + midi_note_raw;
-
-                    let event = MIDIEvent::Key(KbKey {
-                        pressed: false,
-                        midi_note: midi_note,
-                        force: 127,
-                    });
-
-                    publisher.try_push(event).unwrap();
-                }
-
-                // Register key press
-                if event.is_char(char_key) && event.is_press() {
-                    let midi_note_raw =
-                        KEYBOARD_KEYS.iter().position(|&e| e == char_key).unwrap() as u8;
-                    let midi_note = (state.octave * 12u8) + midi_note_raw;
-
-                    // TODO: Sampler mode should fetch modded key index from state and publish abspad
-                    let event = MIDIEvent::Key(KbKey {
-                        pressed: true,
-                        midi_note: midi_note,
-                        force: 127,
-                    });
-
-                    publisher.try_push(event).unwrap();
-                }
-            }
-
-            for mod_key in MOD_KEYS {
-                if event.is_char(mod_key) && event.is_press() {
-                    // TODO: 113 is top, 115 is lower
-                    // Fix together with the midi todo
-                    let emulated_knob_id = if event.is_char('+') { 113 } else { 115 };
-
-                    let event = MIDIEvent::KnobButton(KnobButton {
-                        id: emulated_knob_id,
-                        pressed: true,
-                    });
-
-                    publisher.try_push(event).unwrap();
-                }
-            }
-
-            // Clear history on enter
-            if event.is_key(Key::Enter) {
-                let event = MIDIEvent::ShiftButton(ShiftButton { pressed: true });
-
-                publisher.try_push(event).unwrap();
-            }
-
-            if event.is_key(Key::LCtrl) {
-                if event.is_press() {
-                    ctrl_pressed = true;
-                } else if event.is_release() {
-                    ctrl_pressed = false;
-                }
-            }
-
-            if event.is_key(Key::F01) {
-                break;
-            }
+impl NcursesDaemon {
+    pub fn new(
+        publisher: Caching<Arc<SharedRb<Heap<MIDIEvent>>>, true, false>,
+        state_sub: Caching<Arc<SharedRb<Heap<KeyboardModeState>>>, false, true>,
+    ) -> NcursesDaemon {
+        NcursesDaemon {
+            publisher,
+            state_sub,
         }
     }
 
-    println!("Exiting ncurses read...");
+    // TODO: Changing octaves
+    // We don't want to read from a lock every time we press a key; better if we have an internal state that can be modified on the fly
+    // Supposedly we can do this by making the daemon a struct that has a state
+    // Then, the loop will clone the state on each iteration. Maybe this works? Or try-pop a refcircle?
+    pub fn begin(&mut self) -> NotcursesResult<()> {
+        // Init sensible default configuration
 
-    Ok(())
+        let mut curr_state = KeyboardModeState { octave: 5 };
+
+        // Init ncurses
+
+        let mut nc = Notcurses::new()?;
+        nc.mice_enable(MiceEvents::All)?;
+
+        let mut plane = Plane::new(&mut nc)?;
+        plane.set_scrolling(true);
+
+        putstrln!(+render plane,
+            "\n{0}\nStarting non-blocking event loop. Press `F01` to exit:\n{}\n",
+            "-".repeat(50)
+        )?;
+
+        // Begin loop
+
+        let mut shift_pressed = false;
+
+        loop {
+            let state = match self.state_sub.try_pop() {
+                Some(val) => {
+                    curr_state.octave = val.octave;
+                    val
+                }
+                None => curr_state.clone(),
+            };
+
+            let event = nc.poll_event()?;
+
+            if event.received() {
+                //putstrln![+render plane, "\n{event:?}"]?;
+
+                for pad_key in PAD_KEYS {
+                    // Register key press
+                    if event.is_char(pad_key) && event.is_press() {
+                        // Sampler
+
+                        let pad_id = PAD_KEYS.iter().position(|&e| e == pad_key).unwrap() as u8 + 1;
+
+                        let event = MIDIEvent::AbsPad(AbsPad {
+                            id: pad_id,
+                            pressed: true,
+                        });
+
+                        self.publisher.try_push(event).unwrap();
+                    }
+                }
+
+                for char_key in KEYBOARD_KEYS {
+                    // Register key release
+                    if event.is_char(char_key) && event.is_release() {
+                        let midi_note_raw =
+                            KEYBOARD_KEYS.iter().position(|&e| e == char_key).unwrap() as u8;
+                        let midi_note = (state.octave * 12u8) + midi_note_raw;
+
+                        let event = MIDIEvent::Key(KbKey {
+                            pressed: false,
+                            midi_note,
+                            force: 127,
+                        });
+
+                        self.publisher.try_push(event).unwrap();
+                    }
+
+                    // Register key press
+                    if event.is_char(char_key) && event.is_press() {
+                        let midi_note_raw =
+                            KEYBOARD_KEYS.iter().position(|&e| e == char_key).unwrap() as u8;
+                        let midi_note = (state.octave * 12u8) + midi_note_raw;
+
+                        // TODO: Sampler mode should fetch modded key index from state and publish abspad
+                        let event = MIDIEvent::Key(KbKey {
+                            pressed: true,
+                            midi_note: midi_note,
+                            force: 127,
+                        });
+
+                        self.publisher.try_push(event).unwrap();
+                    }
+                }
+
+                for mod_key in MOD_KEYS {
+                    if event.is_char(mod_key) && event.is_press() {
+                        if shift_pressed {
+                            if event.is_char('+') {
+                                curr_state.octave += 1;
+                            } else {
+                                curr_state.octave -= 1;
+                                if curr_state.octave <= 0 {
+                                    curr_state.octave = 0;
+                                }
+                            }
+
+                            println!("Keyboard octave changed to {}", curr_state.octave + 1);
+                        } else {
+                            // TODO: 113 is top, 115 is lower
+                            // Fix together with the midi todo
+                            let emulated_knob_id = if event.is_char('+') { 113 } else { 115 };
+
+                            let event = MIDIEvent::KnobButton(KnobButton {
+                                id: emulated_knob_id,
+                                pressed: true,
+                            });
+
+                            self.publisher.try_push(event).unwrap();
+                        }
+                    }
+                }
+
+                // Clear history on enter
+                if event.is_key(Key::Enter) {
+                    let event = MIDIEvent::ShiftButton(ShiftButton { pressed: true });
+
+                    self.publisher.try_push(event).unwrap();
+                }
+
+                if event.is_key(Key::LShift) {
+                    if event.is_press() {
+                        shift_pressed = true;
+                    } else if event.is_release() {
+                        shift_pressed = false;
+                    }
+                }
+
+                if event.is_key(Key::F01) {
+                    break;
+                }
+            }
+        }
+
+        println!("Exiting ncurses read...");
+
+        Ok(())
+    }
 }

@@ -15,7 +15,8 @@ use std::time::{Duration, Instant};
 use bigdecimal::ToPrimitive;
 use jdw_osc_lib::osc_stack::OSCStack;
 use midir::{Ignore, MidiInput};
-use ringbuf::traits::{Consumer, Split};
+use ncurses_daemon::{KeyboardModeState, NcursesDaemon};
+use ringbuf::traits::{Consumer, Producer, Split};
 use ringbuf::HeapRb;
 use wl_clipboard_rs::copy::{MimeType, Options, Source};
 
@@ -36,10 +37,10 @@ mod midi_translation;
 mod osc_model;
 mod util;
 
-mod osc_client;
-mod state;
 mod midi_read_daemon;
 mod ncurses_daemon;
+mod osc_client;
+mod state;
 
 fn main() {
     match run() {
@@ -67,7 +68,6 @@ fn main() {
 */
 
 fn run() -> Result<(), Box<dyn Error>> {
-
     /*
 
         HEAPRB & STRUCTURING FOR REUSE WITH KEYBOARD
@@ -75,22 +75,26 @@ fn run() -> Result<(), Box<dyn Error>> {
             -> So there can be a small lock delay for incoming, but incoming is just configuration anyway
         - Anything read and published by OSC should be identical, so the OSCStack can be moved into its own daemon
             that behaves the same in both applications (publishing a standard message)
-        - Similarly, the MIDIEvent struct (as a result of midi_mapping functions done on midi read loop) should be 
+        - Similarly, the MIDIEvent struct (as a result of midi_mapping functions done on midi read loop) should be
             a published part as the end product of another daemon
             -> It is up to the keyboard translator to treat it as the correct event (e.g. key or abspad)
 
 
         => Update
-            - midi event pipe was a success. Easiest way forward is a separate keyboard daemon that makes simple midi events 
-                without any initial configuration 
-        
+            - midi event pipe was a success. Easiest way forward is a separate keyboard daemon that makes simple midi events
+                without any initial configuration
+
 
     */
 
-    // NOTE: I have no idea what an appropriate capacity is 
+    // NOTE: I have no idea what an appropriate capacity is
     let midi_pipe = HeapRb::<MIDIEvent>::new(100);
     let (mut midi_pub, mut midi_sub) = midi_pipe.split();
 
+    let keycontrol_pipe = HeapRb::<KeyboardModeState>::new(100);
+    let (mut keycontrol_pub, mut keycontrol_sub) = keycontrol_pipe.split();
+
+    let oscd_keycontrol = Arc::new(Mutex::new(keycontrol_pub));
 
     // State init
 
@@ -171,6 +175,19 @@ fn run() -> Result<(), Box<dyn Error>> {
                     .unwrap();
                 osc_read_state.lock().unwrap().set_bpm(bpm_arg)
             })
+            .on_message(
+                "/keyboard_octave",
+                &|msg| match msg.args.get(0).unwrap().clone().int() {
+                    Some(octave) => oscd_keycontrol
+                        .lock()
+                        .unwrap()
+                        .try_push(KeyboardModeState {
+                            octave: (octave - 1) as u8,
+                        })
+                        .unwrap_or_else(|_| {}),
+                    None => println!("Could not find any octave number in octave message"),
+                },
+            )
             .on_message("/keyboard_quantization", &|msg| {
                 let quantization = msg.args.get(0).unwrap().clone().string().unwrap();
                 osc_read_state
@@ -233,21 +250,17 @@ fn run() -> Result<(), Box<dyn Error>> {
             let read_time = Instant::now(); // - Duration::from_millis(15);
 
             while let Some(event) = midi_sub.try_pop() {
-
                 let state_lock = midi_read_state.lock().unwrap();
                 let instrument = state_lock.instrument_name.clone();
                 let args = state_lock.message_args.clone();
                 drop(state_lock);
 
-
                 match event {
                     MIDIEvent::Key(key) => {
-
                         // E.g. "a4"
                         let history_id = midi_translation::tone_to_oletter(key.midi_note);
 
                         if key.pressed {
-
                             let msg = osc_model::create_note_on(
                                 key.midi_note as i32,
                                 instrument.as_str(),
@@ -256,10 +269,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 
                             println!("SENDING KEYPRESS {} {}", key.midi_note, instrument);
 
-
                             client.send(msg);
-
-
 
                             midi_read_history.lock().unwrap().add(Event::NoteOn(NoteOn {
                                 id: history_id,
@@ -269,7 +279,6 @@ fn run() -> Result<(), Box<dyn Error>> {
                             let msg = osc_model::create_note_off(key.midi_note as i32);
 
                             client.send(msg);
-
 
                             midi_read_history
                                 .lock()
@@ -300,7 +309,6 @@ fn run() -> Result<(), Box<dyn Error>> {
 
                             client.send(msg);
 
-
                             midi_read_history.lock().unwrap().add(Event::NoteOn(NoteOn {
                                 id: sample_index.to_string(),
                                 time: read_time,
@@ -324,7 +332,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                         if let Some(pad) = last_played_pad {
                             if button.pressed {
                                 // TODO: 113 is top, 115 is lower
-                                // Note duplicate logic in ncurses daemon 
+                                // Note duplicate logic in ncurses daemon
                                 let modifier = if button.id == 115u8 { -1 } else { 1 };
 
                                 let mut state = midi_read_state.lock().unwrap();
@@ -361,8 +369,9 @@ fn run() -> Result<(), Box<dyn Error>> {
     });
 
     //midi_read_daemon::begin(midi_pub)
-    ncurses_daemon::begin(midi_pub).unwrap();
+    NcursesDaemon::new(midi_pub, keycontrol_sub)
+        .begin()
+        .unwrap();
     // TODO: Effectively no error handling whatsoever - should be streamlined
     Ok(())
-
 }
