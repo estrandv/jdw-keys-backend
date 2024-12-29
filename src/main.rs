@@ -96,6 +96,8 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let oscd_keycontrol = Arc::new(Mutex::new(keycontrol_pub));
 
+    let (mut history_event_out, mut history_event_in) = HeapRb::<Event>::new(100).split();
+
     // State init
 
     let state = State::new();
@@ -128,11 +130,8 @@ fn run() -> Result<(), Box<dyn Error>> {
     // History stringify thread
     thread::spawn(move || {
         loop {
-            std::thread::sleep(Duration::from_millis(50));
-            let modified = hist_daemon_history.lock().unwrap().modified.clone();
-
-            if modified {
-                hist_daemon_history.lock().unwrap().modified = false;
+            while let Some(event) = history_event_in.try_pop() {
+                hist_daemon_history.lock().unwrap().add(event);
 
                 let bpm = hist_daemon_state.lock().unwrap().bpm.clone();
                 let quantization = hist_daemon_state.lock().unwrap().quantization.clone();
@@ -156,7 +155,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 println!("Had bpm {}, Copied to clipboard! {}", bpm, stringified);
             }
 
-            sleep(Duration::from_millis(50));
+            sleep(Duration::from_millis(200));
         }
     });
 
@@ -231,13 +230,14 @@ fn run() -> Result<(), Box<dyn Error>> {
             .on_message("/loop_started", &|msg| {
                 // TODO: Long story short, this is the delay to expect as opposed to human-played notes
                 // UPDATE: Added delay compensation to human player, not sure how relevant this is now
-                let first_beat_plays_at = Instant::now() + Duration::from_millis(70);
+                let first_beat_plays_at = Instant::now() + Duration::from_millis(100);
                 osc_read_history
                     .lock()
                     .unwrap()
                     .add(Event::Silence(Silence {
                         time: first_beat_plays_at,
                     }));
+                println!("Loop start registered");
             })
             .begin();
     });
@@ -254,6 +254,15 @@ fn run() -> Result<(), Box<dyn Error>> {
             let read_time = Instant::now(); // - Duration::from_millis(15);
 
             while let Some(event) = midi_sub.try_pop() {
+                // TODO: This and history locking is prob what slows things down
+                /*
+
+                    - INCOMING: state: instrument(str), args(vec<osctype>) (FROM: OSC READ)
+                    - OUTGOING: History events (TO: History daemon)
+                    - Also note: The thread.sleep call might be too high if things lag
+                    - History clearing is a separate scenario that does not work with an event pusher
+
+                */
                 let state_lock = midi_read_state.lock().unwrap();
                 let instrument = state_lock.instrument_name.clone();
                 let args = state_lock.message_args.clone();
@@ -275,22 +284,23 @@ fn run() -> Result<(), Box<dyn Error>> {
 
                             client.send(msg);
 
-                            midi_read_history.lock().unwrap().add(Event::NoteOn(NoteOn {
-                                id: history_id,
-                                time: read_time,
-                            }));
+                            history_event_out
+                                .try_push(Event::NoteOn(NoteOn {
+                                    id: history_id,
+                                    time: read_time,
+                                }))
+                                .unwrap();
                         } else {
                             let msg = osc_model::create_note_off(key.midi_note as i32);
 
                             client.send(msg);
 
-                            midi_read_history
-                                .lock()
-                                .unwrap()
-                                .add(Event::NoteOff(NoteOff {
+                            history_event_out
+                                .try_push(Event::NoteOff(NoteOff {
                                     id: history_id,
                                     time: read_time,
-                                }));
+                                }))
+                                .unwrap();
                         }
                     }
                     MIDIEvent::AbsPad(pad) => {
@@ -313,10 +323,12 @@ fn run() -> Result<(), Box<dyn Error>> {
 
                             client.send(msg);
 
-                            midi_read_history.lock().unwrap().add(Event::NoteOn(NoteOn {
-                                id: sample_index.to_string(),
-                                time: read_time,
-                            }));
+                            history_event_out
+                                .try_push(Event::NoteOn(NoteOn {
+                                    id: sample_index.to_string(),
+                                    time: read_time,
+                                }))
+                                .unwrap();
 
                             last_played_pad = Some(pad.id);
 
@@ -351,8 +363,13 @@ fn run() -> Result<(), Box<dyn Error>> {
                                 // Play the new configuration for easy browsing
                                 let sample_pack = state.pads_configuration.pack_name.clone();
 
-                                let msg =
-                                    osc_model::create_play_sample(new_value, &sample_pack, args);
+                                let pad_args = state.pads_configuration.args.clone();
+
+                                let msg = osc_model::create_play_sample(
+                                    new_value,
+                                    &sample_pack,
+                                    pad_args,
+                                );
 
                                 client.send(msg);
                             }

@@ -35,16 +35,19 @@ pub fn stringify_history(sequence: Vec<SequentialEvent>, args: Vec<OscType>) -> 
             BigDecimal::zero()
         };
 
-        let base: String = format!(
-            "{}:{:.4}",
+        let mut base: String = format!(
+            "{}:{}",
             note.representation,
-            note.reserved_beats.normalized() + bonus
+            note.reserved_beats.normalized() + bonus.clone()
         );
 
         if let Some(sus) = &note.sustain_beats {
             let rounded = sus.round(2);
             //TODO: COMMENTING THIS, ANNOYING SPAM base += format!(",sus{:.4}", rounded.normalized()).as_str();
         }
+
+        // Experimental time-relative sus arg:
+        base += format!(",sus*{}", note.reserved_beats.normalized() + bonus).as_str();
 
         raw_notes.push(base);
     }

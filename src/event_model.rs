@@ -27,26 +27,26 @@ use std::time::Instant;
 
 */
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum Event {
     NoteOn(NoteOn),
     NoteOff(NoteOff),
     Silence(Silence),
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub struct NoteOn {
     pub id: String,
     pub time: Instant,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub struct NoteOff {
     pub id: String,
     pub time: Instant,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub struct Silence {
     pub time: Instant,
 }
