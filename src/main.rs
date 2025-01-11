@@ -10,7 +10,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::sleep;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use bigdecimal::ToPrimitive;
 use jdw_osc_lib::osc_stack::OSCStack;
@@ -230,6 +230,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             .on_message("/loop_started", &|msg| {
                 // TODO: Long story short, this is the delay to expect as opposed to human-played notes
                 // UPDATE: Added delay compensation to human player, not sure how relevant this is now
+                // UPDATE: Deprecatd in favour of jdw_sc_event, remove after testing with that
                 let first_beat_plays_at = Instant::now() + Duration::from_millis(100);
                 osc_read_history
                     .lock()
@@ -238,6 +239,22 @@ fn run() -> Result<(), Box<dyn Error>> {
                         time: first_beat_plays_at,
                     }));
                 println!("Loop start registered");
+            })
+            .on_message("/jdw_sc_event", &|msg| {
+                let event_name = msg.args.get(0).unwrap().clone().string().unwrap();
+                let timestamp = msg.args.get(1).unwrap().clone().time().unwrap();
+                let time = SystemTime::try_from(timestamp).unwrap();
+                // Yes, this is the only way to do it, because instant can only exist as a relative entity
+                let ins = Instant::now() + time.duration_since(SystemTime::now()).unwrap();
+
+                println!("EVENT: {}", event_name);
+
+                if (event_name == "loop_started".to_string()) {
+                    osc_read_history
+                        .lock()
+                        .unwrap()
+                        .add(Event::Silence(Silence { time: ins }));
+                }
             })
             .begin();
     });
