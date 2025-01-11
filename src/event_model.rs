@@ -38,6 +38,7 @@ pub enum Event {
 pub struct NoteOn {
     pub id: String,
     pub time: Instant,
+    pub is_sample: bool,
 }
 
 #[derive(PartialEq, Debug)]

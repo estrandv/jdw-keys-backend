@@ -142,7 +142,9 @@ fn run() -> Result<(), Box<dyn Error>> {
                     .unwrap()
                     .as_sequence(bpm, quantization.clone());
 
-                let stringified = event_history::stringify_history(sequence, args);
+                let ends_on_sample = hist_daemon_history.lock().unwrap().ends_on_sample();
+
+                let stringified = event_history::stringify_history(sequence, ends_on_sample);
 
                 // Copy to clipboard
                 let opts = Options::new();
@@ -305,6 +307,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                                 .try_push(Event::NoteOn(NoteOn {
                                     id: history_id,
                                     time: read_time,
+                                    is_sample: false,
                                 }))
                                 .unwrap();
                         } else {
@@ -344,6 +347,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                                 .try_push(Event::NoteOn(NoteOn {
                                     id: sample_index.to_string(),
                                     time: read_time,
+                                    is_sample: true,
                                 }))
                                 .unwrap();
 

@@ -10,7 +10,7 @@ use crate::util::duration_to_beats;
 
 const SILENCE_REP: &str = "x";
 
-pub fn stringify_history(sequence: Vec<SequentialEvent>, args: Vec<OscType>) -> String {
+pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool) -> String {
     let total_beats = sequence
         .iter()
         .map(|event| event.reserved_beats.clone())
@@ -46,8 +46,10 @@ pub fn stringify_history(sequence: Vec<SequentialEvent>, args: Vec<OscType>) -> 
             //TODO: COMMENTING THIS, ANNOYING SPAM base += format!(",sus{:.4}", rounded.normalized()).as_str();
         }
 
-        // Experimental time-relative sus arg:
-        base += format!(",sus*{}", note.reserved_beats.normalized() + bonus).as_str();
+        // Experimental time-relative sus arg for sequences that end with notes
+        if !ends_on_sample {
+            base += format!(",sus*{}", note.reserved_beats.normalized() + bonus).as_str();
+        }
 
         raw_notes.push(base);
     }
@@ -92,6 +94,19 @@ impl EventHistory {
                 self.modified = true;
             }
         }
+    }
+
+    pub fn ends_on_sample(&self) -> bool {
+        self.events
+            .iter()
+            .last()
+            .map(|a| {
+                return match (a) {
+                    Event::NoteOn(note_on) => note_on.is_sample,
+                    _ => false,
+                };
+            })
+            .unwrap_or(false)
     }
 
     fn is_silent(&self) -> bool {
