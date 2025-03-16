@@ -10,7 +10,7 @@ pub fn create_control_bus_mod(bus: i32, value: f32) -> OscPacket {
 
 pub fn create_play_sample(index: i32, pack_name: &str, args: Vec<OscType>) -> OscPacket {
     let mut base_args = vec![
-        OscType::String("letter_sample".to_string() + "_(.*)"), // ext_id
+        OscType::String("letter_sample_{nodeId}".to_string()), // ext_id
         OscType::String(pack_name.to_string()),
         OscType::Int(index),
         OscType::String("".to_string()),
