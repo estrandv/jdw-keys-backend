@@ -4,11 +4,12 @@ use std::time::{Duration, Instant};
 use bigdecimal::{BigDecimal, Zero};
 use rosc::OscType;
 
-use crate::event_model::{Event, NoteOff, NoteOn};
+use crate::event_model::{BeatBreak, Event, NoteOff, NoteOn, Silence};
 use crate::util;
 use crate::util::duration_to_beats;
 
 const SILENCE_REP: &str = "x";
+const BEAT_BREAK_REP: &str = ".";
 
 pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool) -> String {
     let total_beats = sequence
@@ -35,11 +36,24 @@ pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool) -
             BigDecimal::zero()
         };
 
-        let mut base: String = format!(
-            "{}:{}",
-            note.representation,
-            note.reserved_beats.normalized() + bonus.clone()
-        );
+        // TODO: Any kind of silence representation should be ignored if zero
+        let mut base: String = if note.representation != BEAT_BREAK_REP {
+            format!(
+                "{}:{}",
+                note.representation,
+                note.reserved_beats.normalized() + bonus.clone()
+            )
+        } else {
+            // Beat break marker has no valid args, so we insert a silence after to represent time
+            // Ignore silences that have no time
+            let silence_time = note.reserved_beats.normalized() + bonus.clone();
+
+            if silence_time != BigDecimal::zero() {
+                format!("{} {}:{}", note.representation, SILENCE_REP, silence_time)
+            } else {
+                note.representation.to_string()
+            }
+        };
 
         if let Some(sus) = &note.sustain_beats {
             let rounded = sus.round(2);
@@ -47,7 +61,10 @@ pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool) -
         }
 
         // Experimental time-relative sus arg for sequences that end with notes
-        if !ends_on_sample {
+        if !ends_on_sample
+            && note.representation != BEAT_BREAK_REP
+            && note.representation != SILENCE_REP
+        {
             base += format!(",sus*{}", note.reserved_beats.normalized() + bonus).as_str();
         }
 
@@ -78,6 +95,19 @@ impl EventHistory {
         }
     }
 
+    pub fn register_beatbreak(&mut self, time: Instant) {
+        let event = if self.is_silent() {
+            self.events.clear();
+            Event::Silence(Silence { time })
+        } else {
+            Event::BeatBreak(BeatBreak { time })
+        };
+
+        self.events.push(event);
+        self.modified = true;
+    }
+
+    // TODO: Adjust logic now that beat break handling is done above (redundant?)
     pub fn add(&mut self, event: Event) {
         if self.is_silent() {
             if matches!(event, Event::Silence(_)) {
@@ -197,6 +227,22 @@ impl EventHistory {
 
                     Some(SequentialEvent {
                         representation: SILENCE_REP.to_string(),
+                        reserved_beats: time_beats,
+                        sustain_beats: None,
+                    })
+                }
+                Event::BeatBreak(beatbreak) => {
+                    let time = next_note_time
+                        .map(|next| next.duration_since(beatbreak.time.clone()))
+                        .unwrap_or(Duration::ZERO);
+
+                    next_note_time = Some(beatbreak.time);
+
+                    let time_beats =
+                        util::round_to_nearest(duration_to_beats(time, bpm), quantization.clone());
+
+                    Some(SequentialEvent {
+                        representation: BEAT_BREAK_REP.to_string(),
                         reserved_beats: time_beats,
                         sustain_beats: None,
                     })

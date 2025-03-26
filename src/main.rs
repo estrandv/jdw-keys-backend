@@ -252,10 +252,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 println!("EVENT: {}", event_name);
 
                 if (event_name == "loop_started".to_string()) {
-                    osc_read_history
-                        .lock()
-                        .unwrap()
-                        .add(Event::Silence(Silence { time: ins }));
+                    osc_read_history.lock().unwrap().register_beatbreak(ins);
                 }
             })
             .begin();

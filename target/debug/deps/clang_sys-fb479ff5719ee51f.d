@@ -1,0 +1,14 @@
+/home/estrandv/programming/jdw-keys-backend/target/debug/deps/libclang_sys-fb479ff5719ee51f.rmeta: /home/estrandv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/lib.rs /home/estrandv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/support.rs /home/estrandv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/link.rs /home/estrandv/programming/jdw-keys-backend/target/debug/build/clang-sys-eb0efefb4e559dde/out/macros.rs /home/estrandv/programming/jdw-keys-backend/target/debug/build/clang-sys-eb0efefb4e559dde/out/common.rs /home/estrandv/programming/jdw-keys-backend/target/debug/build/clang-sys-eb0efefb4e559dde/out/dynamic.rs
+
+/home/estrandv/programming/jdw-keys-backend/target/debug/deps/libclang_sys-fb479ff5719ee51f.rlib: /home/estrandv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/lib.rs /home/estrandv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/support.rs /home/estrandv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/link.rs /home/estrandv/programming/jdw-keys-backend/target/debug/build/clang-sys-eb0efefb4e559dde/out/macros.rs /home/estrandv/programming/jdw-keys-backend/target/debug/build/clang-sys-eb0efefb4e559dde/out/common.rs /home/estrandv/programming/jdw-keys-backend/target/debug/build/clang-sys-eb0efefb4e559dde/out/dynamic.rs
+
+/home/estrandv/programming/jdw-keys-backend/target/debug/deps/clang_sys-fb479ff5719ee51f.d: /home/estrandv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/lib.rs /home/estrandv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/support.rs /home/estrandv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/link.rs /home/estrandv/programming/jdw-keys-backend/target/debug/build/clang-sys-eb0efefb4e559dde/out/macros.rs /home/estrandv/programming/jdw-keys-backend/target/debug/build/clang-sys-eb0efefb4e559dde/out/common.rs /home/estrandv/programming/jdw-keys-backend/target/debug/build/clang-sys-eb0efefb4e559dde/out/dynamic.rs
+
+/home/estrandv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/lib.rs:
+/home/estrandv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/support.rs:
+/home/estrandv/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/clang-sys-1.8.1/src/link.rs:
+/home/estrandv/programming/jdw-keys-backend/target/debug/build/clang-sys-eb0efefb4e559dde/out/macros.rs:
+/home/estrandv/programming/jdw-keys-backend/target/debug/build/clang-sys-eb0efefb4e559dde/out/common.rs:
+/home/estrandv/programming/jdw-keys-backend/target/debug/build/clang-sys-eb0efefb4e559dde/out/dynamic.rs:
+
+# env-dep:OUT_DIR=/home/estrandv/programming/jdw-keys-backend/target/debug/build/clang-sys-eb0efefb4e559dde/out

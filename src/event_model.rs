@@ -32,6 +32,12 @@ pub enum Event {
     NoteOn(NoteOn),
     NoteOff(NoteOff),
     Silence(Silence),
+    BeatBreak(BeatBreak),
+}
+
+#[derive(PartialEq, Debug)]
+pub struct BeatBreak {
+    pub time: Instant,
 }
 
 #[derive(PartialEq, Debug)]
