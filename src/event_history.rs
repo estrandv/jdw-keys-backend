@@ -36,20 +36,16 @@ pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool) -
             BigDecimal::zero()
         };
 
-        // TODO: Any kind of silence representation should be ignored if zero
+        let full_beats = note.reserved_beats.normalized() + bonus.clone();
+
         let mut base: String = if note.representation != BEAT_BREAK_REP {
-            format!(
-                "{}:{}",
-                note.representation,
-                note.reserved_beats.normalized() + bonus.clone()
-            )
+            format!("{}:{}", note.representation, full_beats)
         } else {
             // Beat break marker has no valid args, so we insert a silence after to represent time
             // Ignore silences that have no time
-            let silence_time = note.reserved_beats.normalized() + bonus.clone();
 
-            if silence_time != BigDecimal::zero() {
-                format!("{} {}:{}", note.representation, SILENCE_REP, silence_time)
+            if full_beats != BigDecimal::zero() {
+                format!("{} {}:{}", note.representation, SILENCE_REP, full_beats)
             } else {
                 note.representation.to_string()
             }
@@ -68,7 +64,10 @@ pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool) -
             base += format!(",sus*{}", note.reserved_beats.normalized() + bonus).as_str();
         }
 
-        raw_notes.push(base);
+        // Extra guard to avoid zero-length silences (see above for how this is avoided with breaks)
+        if !(full_beats == BigDecimal::zero() && note.representation == SILENCE_REP) {
+            raw_notes.push(base);
+        }
     }
 
     let notes = raw_notes.join(" ");
@@ -215,6 +214,7 @@ impl EventHistory {
                         sustain_beats,
                     })
                 }
+                // TODO: Combine these two - only representation differs
                 Event::Silence(silence) => {
                     let time = next_note_time
                         .map(|next| next.duration_since(silence.time.clone()))
