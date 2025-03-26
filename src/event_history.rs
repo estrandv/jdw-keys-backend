@@ -2,6 +2,10 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 use bigdecimal::{BigDecimal, Zero};
+use itertools::Itertools;
+use rand::distributions::Alphanumeric;
+use rand::seq::IteratorRandom;
+use rand::{thread_rng, Rng};
 use rosc::OscType;
 
 use crate::event_model::{BeatBreak, Event, NoteOff, NoteOn, Silence};
@@ -10,6 +14,9 @@ use crate::util::duration_to_beats;
 
 const SILENCE_REP: &str = "x";
 const BEAT_BREAK_REP: &str = ".";
+
+// TODO: Make dynamically configurable from billboard
+const MULTILINE_MODE: bool = true;
 
 pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool) -> String {
     let total_beats = sequence
@@ -53,7 +60,7 @@ pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool) -
 
         if let Some(sus) = &note.sustain_beats {
             let rounded = sus.round(2);
-            //TODO: COMMENTING THIS, ANNOYING SPAM base += format!(",sus{:.4}", rounded.normalized()).as_str();
+            base += format!(",sus{:.4}", rounded.normalized()).as_str();
         }
 
         // Experimental time-relative sus arg for sequences that end with notes
@@ -72,7 +79,36 @@ pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool) -
 
     let notes = raw_notes.join(" ");
 
-    format!("({}):len{},tot{}", notes, desired_total, total_beats)
+    if (MULTILINE_MODE) {
+        let mut vars: Vec<String> = vec![];
+
+        let lines = notes
+            .split(" . ")
+            .enumerate()
+            .map(|(_, part)| {
+                let id = generate_random_string();
+                vars.push(format!("${}", id));
+                format!("${} = {}", id, part)
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        format!("{}\n{}", lines, vars.join(" "))
+    } else {
+        format!("({}):len{},tot{}", notes, desired_total, total_beats)
+    }
+}
+
+fn generate_random_string() -> String {
+    let mut rng = thread_rng();
+    (0..6) // Generate 6 characters
+        .map(|_| {
+            "abcdefghijklmnopqrstuvxyz_"
+                .chars()
+                .choose(&mut rng)
+                .unwrap()
+        }) // Choose random characters from Alphanumeric
+        .collect::<String>() // Collect the characters into a String
 }
 
 pub struct SequentialEvent {
