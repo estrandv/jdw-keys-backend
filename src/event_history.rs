@@ -16,7 +16,7 @@ const SILENCE_REP: &str = "x";
 const BEAT_BREAK_REP: &str = ".";
 
 // TODO: Make dynamically configurable from billboard
-const MULTILINE_MODE: bool = true;
+const MULTILINE_MODE: bool = false;
 
 pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool) -> String {
     let total_beats = sequence
@@ -60,7 +60,8 @@ pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool) -
 
         if let Some(sus) = &note.sustain_beats {
             let rounded = sus.round(2);
-            base += format!(",sus{:.4}", rounded.normalized()).as_str();
+            // TODO: Accurate sustain, but becomes hard to read
+            // base += format!(",sus{:.4}", rounded.normalized()).as_str();
         }
 
         // Experimental time-relative sus arg for sequences that end with notes
@@ -68,7 +69,9 @@ pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool) -
             && note.representation != BEAT_BREAK_REP
             && note.representation != SILENCE_REP
         {
-            base += format!(",sus*{}", note.reserved_beats.normalized() + bonus).as_str();
+            // TODO: Removing this too for now
+            // Referential arg support in shuttle means we can set this as a default and minimize clutter
+            //base += format!(",sus*{}", note.reserved_beats.normalized() + bonus).as_str();
         }
 
         // Extra guard to avoid zero-length silences (see above for how this is avoided with breaks)

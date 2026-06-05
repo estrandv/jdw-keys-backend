@@ -154,7 +154,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 )
                 .unwrap();
 
-                println!("Had bpm {}, Copied to clipboard! {}", bpm, stringified);
+                //println!("Had bpm {}, Copied to clipboard! {}", bpm, stringified);
             }
 
             sleep(Duration::from_millis(200));
@@ -361,8 +361,6 @@ fn run() -> Result<(), Box<dyn Error>> {
                         println!("{:?}, {}", knob, value);
                     }
                     MIDIEvent::KnobButton(button) => {
-                        println!("Pressed a knob");
-
                         if let Some(pad) = last_played_pad {
                             if button.pressed {
                                 // TODO: 113 is top, 115 is lower
@@ -376,6 +374,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 
                                 let new_value = (existing_value + modifier).max(0);
 
+                                println!("Sample key changed to value: {}", new_value.clone());
                                 state.pads_configuration.pads.insert(pad, new_value);
 
                                 // Play the new configuration for easy browsing

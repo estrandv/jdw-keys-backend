@@ -15,7 +15,7 @@ const KEYBOARD_KEYS: [char; 17] = [
     'q', '2', 'w', '3', 'e', 'r', '5', 't', '6', 'y', '7', 'u', 'i', '9', 'o', '0', 'p',
 ];
 
-const PAD_KEYS: [char; 8] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k'];
+const PAD_KEYS: [char; 16] = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'z', 'x', 'c', 'v', 'b', 'n', 'm'];
 
 const MOD_KEYS: [char; 2] = ['+', '-'];
 
