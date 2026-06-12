@@ -47,6 +47,7 @@ pub struct State {
     pub record_history: bool,
     pub quantize_enabled: bool,
     pub multiline_output: bool,
+    pub history_preview: String,
 }
 
 impl State {
@@ -70,6 +71,7 @@ impl State {
             record_history: true,
             quantize_enabled: true,
             multiline_output: false,
+            history_preview: String::new(),
         }
     }
 

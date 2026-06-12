@@ -12,7 +12,7 @@ use std::thread;
 use std::thread::sleep;
 use std::time::{Duration, Instant, SystemTime};
 
-use bigdecimal::ToPrimitive;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use jdw_osc_lib::osc_stack::OSCStack;
 use midir::{Ignore, MidiInput};
 use ncurses_daemon::{KeyboardModeState, NcursesDaemon};
@@ -136,9 +136,15 @@ fn run() -> Result<(), Box<dyn Error>> {
             while let Some(event) = history_event_in.try_pop() {
                 hist_daemon_history.lock().unwrap().add(event);
 
-                let bpm = hist_daemon_state.lock().unwrap().bpm.clone();
-                let quantization = hist_daemon_state.lock().unwrap().quantization.clone();
-                let args = hist_daemon_state.lock().unwrap().message_args.clone();
+                let state_lock = hist_daemon_state.lock().unwrap();
+                let bpm = state_lock.bpm.clone();
+                let quantize = state_lock.quantize_enabled;
+                let quantization = if quantize {
+                    state_lock.quantization.clone()
+                } else {
+                    BigDecimal::from_str("0.001").unwrap()
+                };
+                drop(state_lock);
 
                 let sequence = hist_daemon_history
                     .lock()
@@ -149,6 +155,8 @@ fn run() -> Result<(), Box<dyn Error>> {
 
                 let multiline = hist_daemon_state.lock().unwrap().multiline_output;
                 let stringified = event_history::stringify_history(sequence, ends_on_sample, multiline);
+
+                hist_daemon_state.lock().unwrap().history_preview = stringified.clone();
 
                 // Copy to clipboard
                 let opts = Options::new();
