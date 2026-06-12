@@ -40,7 +40,7 @@ The ncurses UI is a barebones scrolling plane that prints a banner and separator
 │                                                               │
 │  MIDI: ● Connected   OSC: ● Listening                         │
 │                                                               │
-│  F1:Help  F2:Mode  +/-:Oct  S+Enter:Clear  F10:Quit          │
+│  F2:Mode  F3:Record  F4:Quantize  F5:Multi  F6:Bank  +/-:Oct  S+Enter:Clear  F10:Quit│
 └───────────────────────────────────────────────────────────────┘
 ```
 
@@ -52,7 +52,7 @@ Add `Arc<Mutex<State>>` reference to `NcursesDaemon` so it can read live state d
 
 Add `MIDIEvent::Command(NcursesCommand)` variant so ncurses can request state changes (mode toggle, recording toggle, etc.) from the MIDI processing thread which owns the state mutex.
 
-## Implementation Phases
+## Implementation Phases (completed)
 
 ### Phase 1: State extensions + command channel
 - Add `KeyboardMode`, `record_history`, `quantize_enabled`, `multiline_output` to `State`
@@ -70,16 +70,16 @@ Add `MIDIEvent::Command(NcursesCommand)` variant so ncurses can request state ch
 - MIDI/OSC connection indicators
 - Footer with keybindings
 - Render throttled via dirty-flag + 30fps cap
+- Sampler mode (keyboard keys produce `MIDIEvent::AbsPad` instead of `Key`)
+- F2/F10 quit, F2 mode toggle, +/- octave, Enter clear, Shift modifier
 
-### Phase 3: Event log panel + status bar
+### Phase 3: Event log panel
 - Rolling log of recent events (NoteOn, NoteOff, PadHit) logged locally in ncurses
+- Note names via `tone_to_oletter` for readability
+- Capped at 100 entries, last 5 displayed
 - MIDI/OSC connection dot indicators
 
-### Phase 4: Keybindings + sampler mode
-- F2/m: toggle keyboard/sampler mode
-- r: toggle recording on/off
-- q: toggle quantize on/off  
-- l: toggle multiline output
-- p/Tab: cycle pad bank
-- In sampler mode, keyboard keys produce `MIDIEvent::AbsPad` instead of `Key`
-- Clearer visual distinction between modes
+### Phase 4: Fix keybinding conflicts
+- Replace conflicting char-based toggles (r, q, l, p) with non-conflicting F-keys
+- F3: Record toggle, F4: Quantize toggle, F5: Multiline toggle, F6: Pad bank cycle
+- All toggle keybindings safe from keyboard/pad note conflicts
