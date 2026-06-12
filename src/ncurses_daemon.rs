@@ -141,7 +141,7 @@ impl NcursesDaemon {
         // Connection
         let _ = writeln!(ui, "  MIDI: ● Connected   OSC: ● Listening");
         let _ = writeln!(ui, "{}", "-".repeat(78));
-        let _ = writeln!(ui, "  F1:Help  F2:Mode  r:Record  q:Quantize  +/-:Octave  S+Enter:Clear  F10:Quit");
+        let _ = writeln!(ui, "  F2:Mode  F3:Record  F4:Quantize  F5:Multi  F6:Bank  +/-:Oct  S+Enter:Clear  F10:Quit");
 
         ui
     }
@@ -270,19 +270,19 @@ impl NcursesDaemon {
                         let _ = self.publisher.try_push(MIDIEvent::Command(NcursesCommand::ToggleMode));
                     }
 
-                    if event.is_char('r') && event.is_press() {
+                    if event.is_key(Key::F03) {
                         let _ = self.publisher.try_push(MIDIEvent::Command(NcursesCommand::ToggleRecording));
                     }
 
-                    if event.is_char('q') && event.is_press() {
+                    if event.is_key(Key::F04) {
                         let _ = self.publisher.try_push(MIDIEvent::Command(NcursesCommand::ToggleQuantize));
                     }
 
-                    if event.is_char('l') && event.is_press() {
+                    if event.is_key(Key::F05) {
                         let _ = self.publisher.try_push(MIDIEvent::Command(NcursesCommand::ToggleMultiline));
                     }
 
-                    if event.is_char('p') && event.is_press() {
+                    if event.is_key(Key::F06) {
                         let _ = self.publisher.try_push(MIDIEvent::Command(NcursesCommand::CyclePadBank));
                     }
 
