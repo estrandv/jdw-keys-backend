@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::fmt::Write;
@@ -12,17 +12,20 @@ use ringbuf::SharedRb;
 use crate::event_history::EventHistory;
 use crate::keyboard_model::Key as KbKey;
 use crate::keyboard_model::{AbsPad, KnobButton, MIDIEvent, NcursesCommand, ShiftButton};
+use crate::midi_translation::tone_to_oletter;
 use crate::state::{KeyboardMode, State};
 
 const KEYBOARD_KEYS: [char; 17] = [
     'q', '2', 'w', '3', 'e', 'r', '5', 't', '6', 'y', '7', 'u', 'i', '9', 'o', '0', 'p',
 ];
 
-const PAD_KEYS: [char; 16] = [
-    'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'z', 'x', 'c', 'v', 'b', 'n', 'm',
-];
+    const PAD_KEYS: [char; 16] = [
+        'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'z', 'x', 'c', 'v', 'b', 'n', 'm',
+    ];
 
-const MOD_KEYS: [char; 2] = ['+', '-'];
+    const MOD_KEYS: [char; 2] = ['+', '-'];
+
+    const MAX_LOG_ENTRIES: usize = 100;
 
 #[derive(Clone)]
 pub struct KeyboardModeState {
@@ -51,7 +54,7 @@ impl NcursesDaemon {
         }
     }
 
-    fn build_ui(&self, curr_octave: u8, pressed_keys: &HashSet<char>, pressed_pads: &HashSet<char>) -> String {
+    fn build_ui(&self, curr_octave: u8, pressed_keys: &HashSet<char>, pressed_pads: &HashSet<char>, event_log: &VecDeque<String>) -> String {
         let shared = self.state.lock().unwrap();
         let bpm = shared.bpm;
         let quant = shared.quantization.to_string();
@@ -128,6 +131,13 @@ impl NcursesDaemon {
         let _ = writeln!(ui, "  {}", history_preview);
         let _ = writeln!(ui);
 
+        // Event log
+        let _ = writeln!(ui, "  EVENTS:");
+        for entry in event_log.iter().rev().take(5) {
+            let _ = writeln!(ui, "    {}", entry);
+        }
+        let _ = writeln!(ui);
+
         // Connection
         let _ = writeln!(ui, "  MIDI: ● Connected   OSC: ● Listening");
         let _ = writeln!(ui, "{}", "-".repeat(78));
@@ -144,6 +154,7 @@ impl NcursesDaemon {
         let mut shift_pressed = false;
         let mut pressed_keys: HashSet<char> = HashSet::new();
         let mut pressed_pads: HashSet<char> = HashSet::new();
+        let mut event_log: VecDeque<String> = VecDeque::with_capacity(MAX_LOG_ENTRIES);
         let mut last_render = Instant::now();
         let render_interval = Duration::from_millis(33);
 
@@ -156,7 +167,7 @@ impl NcursesDaemon {
                     curr_octave = val.octave;
                 }
 
-                let ui = self.build_ui(curr_octave, &pressed_keys, &pressed_pads);
+                let ui = self.build_ui(curr_octave, &pressed_keys, &pressed_pads, &event_log);
                 putstrln!(+render plane, "{}", ui)?;
             }
 
@@ -169,6 +180,7 @@ impl NcursesDaemon {
                             if event.is_press() {
                                 pressed_pads.insert(pad_key);
                                 let pad_id = PAD_KEYS.iter().position(|&e| e == pad_key).unwrap() as u8 + 1;
+                                event_log.push_back(format!("PadHit  pad:{}", pad_id));
                                 let _ = self.publisher.try_push(MIDIEvent::AbsPad(AbsPad {
                                     id: pad_id,
                                     pressed: true,
@@ -184,6 +196,7 @@ impl NcursesDaemon {
                             let midi_note_raw = KEYBOARD_KEYS.iter().position(|&e| e == char_key).unwrap() as u8;
                             let midi_note = (curr_octave * 12u8) + midi_note_raw;
                             pressed_keys.remove(&char_key);
+                            event_log.push_back(format!("NoteOff {}", tone_to_oletter(midi_note)));
                             let _ = self.publisher.try_push(MIDIEvent::Key(KbKey {
                                 pressed: false,
                                 midi_note,
@@ -201,11 +214,13 @@ impl NcursesDaemon {
 
                             if is_sampler {
                                 let pad_id = midi_note_raw + 1;
+                                event_log.push_back(format!("PadHit  pad:{}", pad_id));
                                 let _ = self.publisher.try_push(MIDIEvent::AbsPad(AbsPad {
                                     id: pad_id,
                                     pressed: true,
                                 }));
                             } else {
+                                event_log.push_back(format!("NoteOn  {}  vel:127", tone_to_oletter(midi_note)));
                                 let _ = self.publisher.try_push(MIDIEvent::Key(KbKey {
                                     pressed: true,
                                     midi_note,
@@ -269,6 +284,10 @@ impl NcursesDaemon {
 
                     if event.is_char('p') && event.is_press() {
                         let _ = self.publisher.try_push(MIDIEvent::Command(NcursesCommand::CyclePadBank));
+                    }
+
+                    while event_log.len() > MAX_LOG_ENTRIES {
+                        event_log.pop_front();
                     }
                 }
                 _ => {}
