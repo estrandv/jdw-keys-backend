@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use notcurses::*;
@@ -8,8 +8,10 @@ use ringbuf::traits::{Consumer, Producer};
 use ringbuf::wrap::caching::Caching;
 use ringbuf::SharedRb;
 
+use crate::event_history::EventHistory;
 use crate::keyboard_model::Key as KbKey;
-use crate::keyboard_model::{AbsPad, KnobButton, MIDIEvent, ShiftButton};
+use crate::keyboard_model::{AbsPad, KnobButton, MIDIEvent, ShiftButton, NcursesCommand};
+use crate::state::{KeyboardMode, State};
 
 const KEYBOARD_KEYS: [char; 17] = [
     'q', '2', 'w', '3', 'e', 'r', '5', 't', '6', 'y', '7', 'u', 'i', '9', 'o', '0', 'p',
@@ -27,16 +29,22 @@ pub struct KeyboardModeState {
 pub struct NcursesDaemon {
     publisher: Caching<Arc<SharedRb<Heap<MIDIEvent>>>, true, false>,
     state_sub: Caching<Arc<SharedRb<Heap<KeyboardModeState>>>, false, true>,
+    state: Arc<Mutex<State>>,
+    history: Arc<Mutex<EventHistory>>,
 }
 
 impl NcursesDaemon {
     pub fn new(
         publisher: Caching<Arc<SharedRb<Heap<MIDIEvent>>>, true, false>,
         state_sub: Caching<Arc<SharedRb<Heap<KeyboardModeState>>>, false, true>,
+        state: Arc<Mutex<State>>,
+        history: Arc<Mutex<EventHistory>>,
     ) -> NcursesDaemon {
         NcursesDaemon {
             publisher,
             state_sub,
+            state,
+            history,
         }
     }
 

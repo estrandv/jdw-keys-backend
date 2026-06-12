@@ -15,10 +15,7 @@ use crate::util::duration_to_beats;
 const SILENCE_REP: &str = "x";
 const BEAT_BREAK_REP: &str = ".";
 
-// TODO: Make dynamically configurable from billboard
-const MULTILINE_MODE: bool = false;
-
-pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool) -> String {
+pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool, multiline: bool) -> String {
     let total_beats = sequence
         .iter()
         .map(|event| event.reserved_beats.clone())
@@ -82,7 +79,7 @@ pub fn stringify_history(sequence: Vec<SequentialEvent>, ends_on_sample: bool) -
 
     let notes = raw_notes.join(" ");
 
-    if (MULTILINE_MODE) {
+    if (multiline) {
         let mut vars: Vec<String> = vec![];
 
         let lines = notes

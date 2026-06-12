@@ -8,6 +8,12 @@ use rosc::OscType;
     Configurable, shared state variables.
 */
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum KeyboardMode {
+    Keyboard,
+    Sampler,
+}
+
 pub struct PadsConfiguration {
     pub pads: HashMap<u8, i32>, // <pad_id, sample_index>
     pub pack_name: String,
@@ -37,6 +43,10 @@ pub struct State {
     pub instrument_name: String,
     pub last_loop_start_time: Option<Instant>,
     pub pads_configuration: PadsConfiguration,
+    pub keyboard_mode: KeyboardMode,
+    pub record_history: bool,
+    pub quantize_enabled: bool,
+    pub multiline_output: bool,
 }
 
 impl State {
@@ -56,6 +66,10 @@ impl State {
             instrument_name: "aPad".to_string(),
             last_loop_start_time: None,
             pads_configuration: PadsConfiguration::new(),
+            keyboard_mode: KeyboardMode::Keyboard,
+            record_history: true,
+            quantize_enabled: true,
+            multiline_output: false,
         }
     }
 

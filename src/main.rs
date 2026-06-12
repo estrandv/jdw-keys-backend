@@ -22,10 +22,10 @@ use wl_clipboard_rs::copy::{MimeType, Options, Source};
 
 use crate::event_history::EventHistory;
 use crate::event_model::{Event, NoteOff, NoteOn, Silence};
-use crate::keyboard_model::MIDIEvent;
+use crate::keyboard_model::{MIDIEvent, NcursesCommand};
 use crate::midi_mapping::map;
 use crate::osc_client::OscClient;
-use crate::state::State;
+use crate::state::{KeyboardMode, State};
 
 use itertools::Itertools;
 
@@ -110,6 +110,9 @@ fn run() -> Result<(), Box<dyn Error>> {
     let midi_read_history = osc_read_history.clone();
     let hist_daemon_history = osc_read_history.clone();
 
+    let ncurses_state = midi_read_state.clone();
+    let ncurses_history = midi_read_history.clone();
+
     // TODO: modular in/out ports
     let socket = UdpSocket::bind(SocketAddrV4::from_str("127.0.0.1:15459").unwrap()).unwrap();
 
@@ -144,7 +147,8 @@ fn run() -> Result<(), Box<dyn Error>> {
 
                 let ends_on_sample = hist_daemon_history.lock().unwrap().ends_on_sample();
 
-                let stringified = event_history::stringify_history(sequence, ends_on_sample);
+                let multiline = hist_daemon_state.lock().unwrap().multiline_output;
+                let stringified = event_history::stringify_history(sequence, ends_on_sample, multiline);
 
                 // Copy to clipboard
                 let opts = Options::new();
@@ -400,6 +404,27 @@ fn run() -> Result<(), Box<dyn Error>> {
                             midi_read_history.lock().unwrap().clear();
                         }
                     }
+                    MIDIEvent::Command(cmd) => {
+                        let mut state = midi_read_state.lock().unwrap();
+                        match cmd {
+                            NcursesCommand::ToggleMode => {
+                                state.keyboard_mode = match state.keyboard_mode {
+                                    KeyboardMode::Keyboard => KeyboardMode::Sampler,
+                                    KeyboardMode::Sampler => KeyboardMode::Keyboard,
+                                };
+                            }
+                            NcursesCommand::ToggleRecording => {
+                                state.record_history = !state.record_history;
+                            }
+                            NcursesCommand::ToggleQuantize => {
+                                state.quantize_enabled = !state.quantize_enabled;
+                            }
+                            NcursesCommand::ToggleMultiline => {
+                                state.multiline_output = !state.multiline_output;
+                            }
+                            NcursesCommand::CyclePadBank => {}
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -407,7 +432,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     });
 
     //midi_read_daemon::begin(midi_pub)
-    NcursesDaemon::new(midi_pub, keycontrol_sub)
+    NcursesDaemon::new(midi_pub, keycontrol_sub, ncurses_state, ncurses_history)
         .begin()
         .unwrap();
     // TODO: Effectively no error handling whatsoever - should be streamlined

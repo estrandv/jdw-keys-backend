@@ -66,6 +66,16 @@ pub enum MIDIEvent {
     AbsKnob(AbsKnob),
     KnobButton(KnobButton),
     ShiftButton(ShiftButton),
+    Command(NcursesCommand),
+}
+
+#[derive(Debug)]
+pub enum NcursesCommand {
+    ToggleMode,
+    ToggleRecording,
+    ToggleQuantize,
+    ToggleMultiline,
+    CyclePadBank,
 }
 
 #[derive(Debug)]
