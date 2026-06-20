@@ -1,0 +1,31 @@
+# jdw-keys-backend configuration
+# Local overrides for ~/.config/jdw.toml [keys] section.
+# Values here take precedence over central config; compiled-in defaults
+# are the final fallback.
+
+# Network
+router_host = "127.0.0.1"
+router_port = 13339
+osc_listen_port = 17777
+local_bind_port = 15459
+
+# State defaults
+instrument_name = "aPad"
+bpm = 120
+quantization = "0.125"
+default_pack = "EMU_EDrum"
+
+# Synth message arguments (flat alternating key-value list)
+message_args = ["amp", "0.2", "relT", "0.2", "ofs", "0.0"]
+
+# Startup mode
+initial_mode = "keyboard"
+initial_octave = 5
+record_history = true
+quantize_enabled = true
+multiline_output = false
+
+# Available instruments (populates F7 dropdown; can be overridden dynamically
+# via OSC /set_available_instruments)
+available_instruments = ["syncLead", "stringMachine", "pwmPad", "additivePad", "reeseBass", "dangerBass", "trumpet", "cheapPiano", "eighties", "FMRhodes", "subBass", "wobble", "hypersaw", "fmBass", "acidBass", "analogBass", "pluckBass"]
+available_packs = ["CR-78", "EMU_SP12", "Roland707Demo", "Roland808"]

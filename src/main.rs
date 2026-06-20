@@ -37,6 +37,7 @@ mod midi_translation;
 mod osc_model;
 mod util;
 
+mod config;
 mod midi_read_daemon;
 mod ncurses_daemon;
 mod osc_client;
@@ -87,6 +88,8 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     */
 
+    config::init(Some("config.toml"));
+
     // NOTE: I have no idea what an appropriate capacity is
     let midi_pipe = HeapRb::<MIDIEvent>::new(100);
     let (mut midi_pub, mut midi_sub) = midi_pipe.split();
@@ -113,8 +116,10 @@ fn run() -> Result<(), Box<dyn Error>> {
     let ncurses_state = midi_read_state.clone();
     let ncurses_history = midi_read_history.clone();
 
-    // TODO: modular in/out ports
-    let socket = UdpSocket::bind(SocketAddrV4::from_str("127.0.0.1:15459").unwrap()).unwrap();
+    let cfg = config::Config::get();
+    let socket = UdpSocket::bind(SocketAddrV4::from_str(
+        &format!("127.0.0.1:{}", cfg.local_bind_port)
+    ).unwrap()).unwrap();
 
     socket.set_nonblocking(true).unwrap();
     socket
@@ -126,9 +131,29 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let mut client = OscClient::new(
         socket,
-        // 13339 is router, 13331 is sc - testing if direct to sc is more efficient
-        SocketAddrV4::from_str("127.0.0.1:13339").unwrap(),
+        SocketAddrV4::from_str(
+            &format!("{}:{}", cfg.router_host, cfg.router_port)
+        ).unwrap(),
     );
+
+    // Subscribe to keyboard port on the router
+    let keyboard_port = cfg.osc_listen_port;
+    for addr in &[
+        "/set_bpm",
+        "/keyboard_quantization",
+        "/keyboard_octave",
+        "/keyboard_args",
+        "/keyboard_pad_args",
+        "/keyboard_pad_samples",
+        "/keyboard_pad_pack",
+        "/keyboard_letter_index",
+        "/keyboard_mode_synth",
+        "/keyboard_mode_sampler",
+        "/keyboard_instrument_name",
+        "/jdw_sc_event",
+    ] {
+        client.send(osc_model::create_subscribe(addr, "127.0.0.1", keyboard_port));
+    }
 
     // History stringify thread
     thread::spawn(move || {
@@ -176,7 +201,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     // OSC Read Thread
     thread::spawn(move || {
         // TODO: Same as regular keyboard address, atm
-        OSCStack::init("127.0.0.1:17777".to_string())
+        OSCStack::init(format!("127.0.0.1:{}", cfg.osc_listen_port))
             .on_message("/set_bpm", &|msg| {
                 let bpm_arg = msg
                     .args
@@ -241,6 +266,18 @@ fn run() -> Result<(), Box<dyn Error>> {
                 println!("CHANGING KEYBOARD TO {}", name);
                 osc_read_state.lock().unwrap().instrument_name = name;
             })
+            .on_message("/set_available_instruments", &|msg| {
+                let instruments: Vec<String> = msg.args.iter()
+                    .filter_map(|a| a.clone().string())
+                    .collect();
+                osc_read_state.lock().unwrap().available_instruments = instruments;
+            })
+            .on_message("/set_available_packs", &|msg| {
+                let packs: Vec<String> = msg.args.iter()
+                    .filter_map(|a| a.clone().string())
+                    .collect();
+                osc_read_state.lock().unwrap().available_packs = packs;
+            })
             .on_message("/loop_started", &|msg| {
                 // TODO: Long story short, this is the delay to expect as opposed to human-played notes
                 // UPDATE: Added delay compensation to human player, not sure how relevant this is now
@@ -274,14 +311,14 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     thread::spawn(move || {
         let mut last_played_pad: Option<u8> = None;
+        let mut idle_count: u32 = 0;
 
         loop {
-            // TODO: Find a sweetspot between lag and cpu usage
-            std::thread::sleep(Duration::from_nanos(500000));
-
+            let mut had_events = false;
             let read_time = Instant::now(); // - Duration::from_millis(15);
 
             while let Some(event) = midi_sub.try_pop() {
+                had_events = true;
                 // TODO: This and history locking is prob what slows things down
                 /*
 
@@ -308,28 +345,24 @@ fn run() -> Result<(), Box<dyn Error>> {
                                 args,
                             );
 
-                            println!("SENDING KEYPRESS {} {}", key.midi_note, instrument);
-
                             client.send(msg);
 
-                            history_event_out
+                            let _ = history_event_out
                                 .try_push(Event::NoteOn(NoteOn {
                                     id: history_id,
                                     time: read_time,
                                     is_sample: false,
-                                }))
-                                .unwrap();
+                                }));
                         } else {
                             let msg = osc_model::create_note_off(key.midi_note as i32);
 
                             client.send(msg);
 
-                            history_event_out
+                            let _ = history_event_out
                                 .try_push(Event::NoteOff(NoteOff {
                                     id: history_id,
                                     time: read_time,
-                                }))
-                                .unwrap();
+                                }));
                         }
                     }
                     MIDIEvent::AbsPad(pad) => {
@@ -352,13 +385,12 @@ fn run() -> Result<(), Box<dyn Error>> {
 
                             client.send(msg);
 
-                            history_event_out
+                            let _ = history_event_out
                                 .try_push(Event::NoteOn(NoteOn {
                                     id: sample_index.to_string(),
                                     time: read_time,
                                     is_sample: true,
-                                }))
-                                .unwrap();
+                                }));
 
                             last_played_pad = Some(pad.id);
 
@@ -431,10 +463,26 @@ fn run() -> Result<(), Box<dyn Error>> {
                                 state.multiline_output = !state.multiline_output;
                             }
                             NcursesCommand::CyclePadBank => {}
+                            NcursesCommand::SetInstrument(name) => {
+                                state.instrument_name = name;
+                            }
+                            NcursesCommand::SetPack(name) => {
+                                state.pads_configuration.pack_name = name;
+                            }
                         }
                     }
                     _ => {}
                 }
+            }
+
+            if had_events {
+                idle_count = 0;
+            } else {
+                idle_count = idle_count.saturating_add(1);
+                let delay = if idle_count > 10 { 2000 }
+                    else if idle_count > 5 { 500 }
+                    else { 100 };
+                std::thread::sleep(Duration::from_micros(delay));
             }
         }
     });

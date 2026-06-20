@@ -76,6 +76,8 @@ pub enum NcursesCommand {
     ToggleQuantize,
     ToggleMultiline,
     CyclePadBank,
+    SetInstrument(String),
+    SetPack(String),
 }
 
 #[derive(Debug)]

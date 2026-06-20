@@ -4,6 +4,8 @@ use std::time::Instant;
 use bigdecimal::BigDecimal;
 use rosc::OscType;
 
+use crate::config::Config;
+
 /*
     Configurable, shared state variables.
 */
@@ -22,15 +24,17 @@ pub struct PadsConfiguration {
 
 impl PadsConfiguration {
     fn new() -> PadsConfiguration {
+        Self::new_with_pack("EMU_EDrum")
+    }
 
-        // Generate default values as identical to id with a generous amount of indices
+    fn new_with_pack(pack_name: &str) -> PadsConfiguration {
         let base_map: HashMap<_, _> = (0u8..128u8).into_iter()
             .map(|value| (value, value as i32))
             .collect();
 
         PadsConfiguration {
             pads: base_map,
-            pack_name: "EMU_EDrum".to_string(),
+            pack_name: pack_name.to_string(),
             args: Vec::new()
         }
     }
@@ -39,6 +43,8 @@ impl PadsConfiguration {
 pub struct State {
     pub bpm: i64,
     pub quantization: BigDecimal,
+    pub available_instruments: Vec<String>,
+    pub available_packs: Vec<String>,
     pub message_args: Vec<OscType>,
     pub instrument_name: String,
     pub last_loop_start_time: Option<Instant>,
@@ -53,24 +59,33 @@ pub struct State {
 impl State {
 
     pub fn new() -> State {
+        let cfg = Config::get();
+        let mode = match cfg.initial_mode.to_lowercase().as_str() {
+            "sampler" => KeyboardMode::Sampler,
+            _ => KeyboardMode::Keyboard,
+        };
+        let mut msg_args = Vec::new();
+        for arg in &cfg.message_args {
+            if let Ok(f) = f64::from_str(arg) {
+                msg_args.push(OscType::Float(f as f32));
+            } else {
+                msg_args.push(OscType::String(arg.to_string()));
+            }
+        }
+
         State {
-            bpm: 120,
-            quantization: BigDecimal::from_str("0.125").unwrap(),
-            message_args: vec![
-                OscType::String("amp".to_string()),
-                OscType::Float(0.2),
-                OscType::String("relT".to_string()),
-                OscType::Float(0.2),
-                OscType::String("ofs".to_string()),
-                OscType::Float(0.0),
-            ],
-            instrument_name: "aPad".to_string(),
+            bpm: cfg.bpm,
+            quantization: BigDecimal::from_str(&cfg.quantization).unwrap(),
+            message_args: msg_args,
+            instrument_name: cfg.instrument_name.clone(),
+            available_instruments: cfg.available_instruments.clone(),
+            available_packs: cfg.available_packs.clone(),
             last_loop_start_time: None,
-            pads_configuration: PadsConfiguration::new(),
-            keyboard_mode: KeyboardMode::Keyboard,
-            record_history: true,
-            quantize_enabled: true,
-            multiline_output: false,
+            pads_configuration: PadsConfiguration::new_with_pack(&cfg.default_pack),
+            keyboard_mode: mode,
+            record_history: cfg.record_history,
+            quantize_enabled: cfg.quantize_enabled,
+            multiline_output: cfg.multiline_output,
             history_preview: String::new(),
         }
     }

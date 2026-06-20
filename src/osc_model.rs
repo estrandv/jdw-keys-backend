@@ -57,3 +57,14 @@ pub fn create_note_off(index: i32) -> OscPacket {
         ],
     })
 }
+
+pub fn create_subscribe(osc_address: &str, ip: &str, port: u16) -> OscPacket {
+    OscPacket::Message(OscMessage {
+        addr: "/subscribe".to_string(),
+        args: vec![
+            OscType::String(osc_address.to_string()),
+            OscType::String(ip.to_string()),
+            OscType::Int(port as i32),
+        ],
+    })
+}
